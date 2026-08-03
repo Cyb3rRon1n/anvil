@@ -1,0 +1,18 @@
+# ==========================
+# Anvil Project
+# ==========================
+
+# Generated stack output, once this exists - never committed here.
+stack/
+
+# Model weights - large, never committed here.
+models/
+
+# ==========================
+# Python
+# ==========================
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
