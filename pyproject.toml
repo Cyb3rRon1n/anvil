@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "anvil-forge"
+version = "0.1.0-alpha"
+description = "A GPU-compute creativity forge - inspects a machine's real GPU VRAM and builds a tailored local AI/creative stack."
+readme = "README.md"
+requires-python = ">=3.11"
+
+authors = [
+{name = "Anvil Contributors"}
+]
+
+license = {file = "LICENSE"}
+
+keywords = [
+"homelab",
+"ollama",
+"comfyui",
+"docker",
+"self-hosted",
+"local-ai",
+"gpu"
+]
+
+classifiers = [
+"Development Status :: 2 - Pre-Alpha",
+"Intended Audience :: End Users/Desktop",
+"License :: OSI Approved :: MIT License",
+"Programming Language :: Python :: 3",
+"Programming Language :: Python :: 3.11",
+"Programming Language :: Python :: 3.12",
+"Operating System :: POSIX :: Linux",
+"Topic :: System :: Installation/Setup"
+]
+
+dependencies = [
+    "typer",
+    "rich",
+    "textual",
+    "psutil",
+    "jinja2",
+    "pyyaml"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "pytest-asyncio"]
+
+[project.scripts]
+anvil = "installer.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["installer"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

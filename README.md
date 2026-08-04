@@ -2,22 +2,37 @@
 
 **A GPU-compute creativity forge.** *(working title — rename freely, nothing depends on it yet)*
 
-Sibling project to [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge) in the same spirit: inspect a machine's real hardware, recommend a tier it can actually run, generate a ready-to-run Docker Compose stack. Where Vulcan sizes for CPU/RAM/disk, Anvil sizes for **GPU VRAM** — because the workload is different. A local LLM, an image-generation pipeline, or a video-generation model lives or dies by how much VRAM is actually available, not how many CPU cores the host has.
+Sibling project to [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge) in the same spirit: inspect a machine's real hardware, recommend a tier it can actually run, generate a ready-to-run Docker Compose stack. Where Vulcan sizes for CPU/RAM/disk, Anvil sizes for **GPU VRAM** — because the workload is different. A local LLM or an image-generation pipeline lives or dies by how much VRAM is actually available, not how many CPU cores the host has.
 
-**Status: concept stage.** Nothing in this repo has been built, run, or verified against real hardware yet. This is a scope-preserving sketch, written up so the idea and its reasoning survive between sessions — see [CLAUDE.md](CLAUDE.md) for the design notes and everything still genuinely unknown.
+**Status: real, working v0.1.** CLI-only so far (no TUI yet) — detects your GPU's real VRAM (a functional query, not just "is a tool installed"), recommends a tier, generates a Docker Compose stack for Ollama + Open WebUI (+ ComfyUI at Heavy tier on NVIDIA). Verified against real containers on real hardware where possible; the honest gaps (ComfyUI never run against a real NVIDIA GPU, no ROCm/Intel ComfyUI image yet) are documented in [CLAUDE.md](CLAUDE.md), not hidden.
+
+## Quick start
+
+```bash
+git clone https://github.com/Cyb3rRon1n/anvil.git
+cd anvil
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+anvil
+```
+
+Detects your CPU/RAM/disk and every GPU with real dedicated VRAM, recommends a tier, asks what you want, and generates `stack/docker-compose.yml` — with the option to start it immediately. A host with no discrete GPU (integrated graphics only) gets a clear explanation and no stack, rather than a tier it can't actually deliver on.
+
+```bash
+anvil --non-interactive --yes --start   # scripted use
+```
 
 ## Why a separate project, not a Vulcan mode
 
-Scoped out during a Vulcan session that considered and rejected folding "creativity build" services (local LLMs, ComfyUI, Stable Diffusion) into Vulcan directly. The reasoning, in short: these aren't just more services for Vulcan's existing service picker — they need a fundamentally different sizing model (VRAM-bound, not CPU/RAM-bound), a GPU-VRAM detection layer Vulcan's `detect_gpu()` was never built for (vendor presence only, never VRAM amount), and a different category of real quirks (model download/storage management, CUDA/ROCm toolkit prerequisites) with the same hand-verified rigor Vulcan already holds itself to for its own 17 services. Doing it well means a second tier model built around VRAM from day one, not one bolted onto Vulcan's CPU/RAM-centric tiers. Full reasoning in [CLAUDE.md](CLAUDE.md).
+Scoped out during a Vulcan session that considered and rejected folding "creativity build" services (local LLMs, ComfyUI) into Vulcan directly. These aren't just more services for Vulcan's existing service picker — they need a fundamentally different sizing model (VRAM-bound, not CPU/RAM-bound), a GPU-VRAM detection layer Vulcan's `detect_gpu()` was never built for (vendor presence only, never VRAM amount — and, found while researching this, not even reliably vendor presence: see CLAUDE.md), and a different category of real quirks (model download/storage management, CUDA/ROCm toolkit prerequisites). Full reasoning in [CLAUDE.md](CLAUDE.md).
 
-## Candidate services (unverified, starting point only)
+## What's in the stack
 
-Not yet researched with Vulcan's own rigor (real image tags, real VRAM requirements, real first-run quirks) — just a plausible starting list to scope against later:
+- **Ollama** — local LLM runtime, OpenAI-compatible API. Pulls and manages its own models.
+- **Open WebUI** — ChatGPT-style frontend for Ollama. No setup beyond picking a model on first visit.
+- **ComfyUI** *(Heavy tier, NVIDIA only)* — node-based image generation. Wires into Open WebUI for inline image generation once both are up — Anvil tells you exactly where to click (Admin Panel > Settings > Images) since that connection is a runtime setting, not something a compose file can do for you. Model checkpoints need to be placed manually; unlike Ollama, ComfyUI doesn't manage its own downloads.
 
-- **Ollama** — local LLM serving. Real image confirmed to exist (`ollama/ollama`, multi-arch) — nothing else about it verified yet.
-- **Open WebUI** — chat frontend for Ollama.
-- **ComfyUI** — node-based image/video generation.
-- **Stable Diffusion WebUI (AUTOMATIC1111)** — more turnkey alternative to ComfyUI.
+Tiers are based on your GPU's real detected VRAM: **Light** (any real VRAM, small/quantized models), **Medium** (8GB+, comfortable up to ~14B models), **Heavy** (12GB+, adds ComfyUI). See [CLAUDE.md](CLAUDE.md) for where these numbers come from and what's still unverified.
 
 ## What's reused from Vulcan vs. genuinely new
 

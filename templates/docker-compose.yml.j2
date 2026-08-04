@@ -1,0 +1,66 @@
+services:
+{% if 'ollama' in enabled %}
+  ollama:
+    image: {% if gpu_vendor == 'amd' %}ollama/ollama:rocm{% else %}ollama/ollama:latest{% endif %}
+
+    container_name: ollama
+    volumes:
+      - ./data/ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+{% if gpu_vendor == 'nvidia' %}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+{% elif gpu_vendor == 'amd' %}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+{% if render_gid %}
+    group_add:
+      - "{{ render_gid }}"
+{% endif %}
+{% endif %}
+    restart: unless-stopped
+{% endif %}
+{% if 'open-webui' in enabled %}
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    ports:
+      - "3000:8080"
+    depends_on:
+      - ollama
+    restart: unless-stopped
+{% endif %}
+{% if 'comfyui' in enabled %}
+  comfyui:
+    image: mmartial/comfyui-nvidia-docker:latest
+    container_name: comfyui
+    environment:
+      - WANTED_UID={{ puid }}
+      - WANTED_GID={{ pgid }}
+      - BASE_DIRECTORY=/basedir
+      - SECURITY_LEVEL=normal
+    volumes:
+      - ./data/comfyui/run:/comfy/mnt
+      - ./data/comfyui/basedir:/basedir
+    ports:
+      - "8188:8188"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+{% endif %}
