@@ -124,6 +124,28 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "image hasn't been researched yet - see CLAUDE.md's still-open questions."
         )
 
+    if config.gpu and config.gpu.vendor == "nvidia" and enabled:
+
+        # A real, separate gap from GPU presence itself: nvidia-smi
+        # (what detection above already confirmed working) and the
+        # NVIDIA Container Toolkit (the separate OCI runtime hook
+        # Docker needs to actually pass a GPU into a container) are
+        # independently installed - detecting the GPU proves nothing
+        # about whether the toolkit is present. AMD/Intel need no
+        # equivalent warning: /dev/kfd and /dev/dri passthrough are
+        # plain Docker device mounts, no special container runtime
+        # required, and detect_amd_gpus()/detect_intel_gpus() already
+        # only succeed when the real kernel driver is loaded - unlike
+        # nvidia-smi, which works standalone regardless of whether the
+        # separate container-toolkit integration exists.
+        warnings.append(
+            "GPU passthrough requires the NVIDIA Container Toolkit to be installed and "
+            "registered with Docker on this host, separately from the NVIDIA driver "
+            "detection above already confirmed - Anvil doesn't install it automatically. "
+            "Install guide: "
+            "https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+        )
+
     if "open-webui" in enabled and "comfyui" in enabled:
 
         warnings.append(

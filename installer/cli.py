@@ -43,10 +43,30 @@ def main(
     ),
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
-    start: bool | None = typer.Option(None, "--start/--no-start")
+    start: bool | None = typer.Option(None, "--start/--no-start"),
+    plain: bool = typer.Option(False, "--plain", help="Use the plain CLI prompts instead of the TUI")
 ):
     if ctx.invoked_subcommand is not None:
         return
+
+    if not non_interactive and not plain:
+
+        from installer.tui import run_tui
+
+        run_tui()
+        return
+
+    run_install(non_interactive, yes, comfyui, puid, pgid, start)
+
+
+def run_install(
+    non_interactive: bool,
+    yes: bool,
+    comfyui: bool | None,
+    puid: int | None,
+    pgid: int | None,
+    start: bool | None
+):
 
     if non_interactive and not yes:
         console.print("[red]--yes is required alongside --non-interactive.[/red]")

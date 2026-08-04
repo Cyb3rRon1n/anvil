@@ -70,12 +70,13 @@ def test_write_stack_heavy_nvidia_with_comfyui_requested_includes_it(tmp_path):
 
     assert "comfyui:" in compose
     assert "mmartial/comfyui-nvidia-docker" in compose
-    assert result["warnings"] == [
+    assert (
         "Open WebUI and ComfyUI don't wire themselves together automatically - in "
         "Open WebUI, go to Admin Panel > Settings > Images, enable Image Generation, "
         "set the engine to ComfyUI, and point it at http://comfyui:8188, then click "
         "Verify Connection."
-    ]
+    ) in result["warnings"]
+    assert any("NVIDIA Container Toolkit" in warning for warning in result["warnings"])
 
 
 def test_write_stack_heavy_amd_with_comfyui_requested_warns_and_omits(tmp_path):
@@ -91,6 +92,41 @@ def test_write_stack_heavy_amd_with_comfyui_requested_warns_and_omits(tmp_path):
 
     assert "comfyui:" not in compose
     assert any("NVIDIA-only" in warning for warning in result["warnings"])
+
+
+def test_write_stack_nvidia_warns_about_container_toolkit(tmp_path):
+
+    config = make_config("medium", gpu=GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192))
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "docs.nvidia.com/datacenter/cloud-native/container-toolkit" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_amd_never_warns_about_container_toolkit(tmp_path):
+    """
+    A real, deliberate asymmetry, not an oversight: detect_amd_gpus()
+    only ever succeeds when the amdgpu kernel driver is already
+    loaded (that's the mechanism it reads VRAM through), unlike
+    nvidia-smi, which works standalone independent of whether the
+    separate NVIDIA Container Toolkit is installed - so AMD has
+    nothing equivalent left to warn about.
+    """
+
+    config = make_config("medium", gpu=GpuInfo(vendor="amd", name="RX 6800", vram_total_mb=16384))
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("Toolkit" in warning or "driver" in warning for warning in result["warnings"])
+
+
+def test_write_stack_no_gpu_produces_no_toolkit_warning(tmp_path):
+
+    config = make_config("light", gpu=None)
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert result["warnings"] == []
 
 
 def test_write_stack_creates_data_directories_only_for_enabled_services(tmp_path):

@@ -173,7 +173,9 @@ def test_confirm_declined_aborts(tmp_path):
         "installer.cli.write_stack"
     ) as mock_write_stack:
 
-        result = runner.invoke(app, ["--puid", "1000", "--pgid", "1000", "--no-start"], input="light\nn\n")
+        result = runner.invoke(
+            app, ["--plain", "--puid", "1000", "--pgid", "1000", "--no-start"], input="light\nn\n"
+        )
 
     assert result.exit_code == 0
     assert "Aborted" in result.output
