@@ -6,7 +6,7 @@
 - **Who it's for** — Homelab and self-hosted folks who want a local AI/creative setup without hand-researching VRAM requirements, Docker images, and GPU passthrough flags per vendor.
 - **Why** — Local LLM and image-generation workloads are VRAM-bound, a different sizing problem than [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge, Anvil's sibling project) solves for CPU/RAM/disk.
 - **Where** — Any Linux host with Docker and a real NVIDIA, AMD, or Intel Arc GPU.
-- **When to use it** — Real, working build, not a proof of concept. Honest gaps are documented, not hidden — see [CLAUDE.md](CLAUDE.md) for exactly what's verified against real hardware and what isn't yet.
+- **When to use it** — Real, working build, not a proof of concept. Honest gaps are documented, not hidden — see [ROADMAP.md](ROADMAP.md) for what's shipped versus still open, and [CLAUDE.md](CLAUDE.md) for exactly what's verified against real hardware and what isn't yet.
 
 **Status:** Guided TUI by default, plus a scriptable CLI (`--plain`/`--non-interactive`) — detects your GPU's real VRAM (a functional query, not just "is a tool installed"), recommends a tier, generates a Docker Compose stack for Ollama + Open WebUI (+ ComfyUI at Heavy tier — NVIDIA, AMD, and Intel Arc all have a real, verified image). Verified against real containers on real hardware where possible; the honest gap (ComfyUI never run against real discrete GPU hardware of any vendor — none exists in this project's environment) is documented in [CLAUDE.md](CLAUDE.md), not hidden.
 
