@@ -226,6 +226,7 @@ def test_start_success_prints_service_urls(tmp_path):
         result = runner.invoke(app, ["--non-interactive", "--yes", "--start"])
 
     assert result.exit_code == 0, result.output
+    assert "Dashboard" in result.output
     assert "Ollama API" in result.output
     assert "Open WebUI" in result.output
     mock_run_docker.assert_called_once()

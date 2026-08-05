@@ -101,3 +101,11 @@ services:
       - "8188:8188"
     restart: unless-stopped
 {% endif %}
+  dashboard:
+    image: nginx:alpine
+    container_name: dashboard
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+    restart: unless-stopped

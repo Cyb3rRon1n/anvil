@@ -122,7 +122,12 @@ class ReviewScreen(Screen):
 
         if returncode == 0:
 
-            message = "Stack is up:\n  Ollama API:   http://localhost:11434\n  Open WebUI:   http://localhost:3000"
+            message = (
+                "Stack is up:\n"
+                "  Dashboard:    http://localhost:8080\n"
+                "  Ollama API:   http://localhost:11434\n"
+                "  Open WebUI:   http://localhost:3000"
+            )
 
             if "comfyui" in self._config.enabled_optional:
                 message += "\n  ComfyUI:      http://localhost:8188"

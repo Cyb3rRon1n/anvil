@@ -253,6 +253,7 @@ def run_install(
         if proc.returncode == 0:
 
             console.print("[green]Stack is up.[/green]")
+            console.print("  Dashboard:    http://localhost:8080")
             console.print("  Ollama API:   http://localhost:11434")
             console.print("  Open WebUI:   http://localhost:3000")
 

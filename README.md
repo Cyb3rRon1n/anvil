@@ -33,9 +33,10 @@ Scoped out during a Vulcan session that considered and rejected folding "creativ
 
 ## What's in the stack
 
+- **Dashboard** — a lightweight landing page at `http://<host>:8080` linking to whatever's enabled in your stack. Generated fresh every time, using your host's real LAN-facing IP so it works when opened from another device, not just `localhost`.
 - **Ollama** — local LLM runtime, OpenAI-compatible API. Pulls and manages its own models.
 - **Open WebUI** — ChatGPT-style frontend for Ollama. No setup beyond picking a model on first visit.
-- **ComfyUI** *(Heavy tier, NVIDIA, AMD, or Intel Arc)* — node-based image generation. Wires into Open WebUI for inline image generation once both are up — Anvil tells you exactly where to click (Admin Panel > Settings > Images) since that connection is a runtime setting, not something a compose file can do for you. Model checkpoints need to be placed manually; unlike Ollama, ComfyUI doesn't manage its own downloads.
+- **ComfyUI** *(Heavy tier, NVIDIA, AMD, or Intel Arc)* — node-based image generation. Wires into Open WebUI for inline image generation once both are up — Anvil tells you exactly where to click (Admin Panel > Settings > Images) since that connection is a runtime setting, not something a compose file can do for you. Model checkpoints need to be placed manually; unlike Ollama, ComfyUI doesn't manage its own downloads. NVIDIA and Intel Arc's images bundle ComfyUI-Manager (for installing custom nodes/models from inside ComfyUI itself); AMD's doesn't, so Anvil prints the exact one-time fix commands rather than pretending it's there.
 
 Tiers are based on your GPU's real detected VRAM: **Light** (any real VRAM, small quantized models), **Medium** (8GB+, comfortable for 7-9B-class LLMs like Llama 3.1 8B), **Heavy** (12GB+, comfortable for 12-14B-class LLMs like Qwen2.5 14B, plus ComfyUI). Anvil shows you this breakdown for whichever tier you pick, not just its name. See [CLAUDE.md](CLAUDE.md) for the real Ollama/SDXL numbers these are based on.
 

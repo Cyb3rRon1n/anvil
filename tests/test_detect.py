@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from installer.detect import (
     GpuInfo,
     detect_amd_gpus,
+    detect_host_ip,
     detect_intel_gpus,
     detect_nvidia_gpus,
     detect_primary_gpu,
@@ -146,3 +147,17 @@ def test_port_in_use_false_for_a_closed_port():
     probe.close()
 
     assert port_in_use(port) is False
+
+
+def test_detect_host_ip_returns_a_real_address():
+    """
+    Genuinely unmocked, mirroring Vulcan's own identical test for the
+    identical function - this machine has a real route out, so this
+    exercises the real socket call rather than assuming the technique
+    works.
+    """
+
+    result = detect_host_ip()
+
+    assert result is not None
+    assert result.count(".") == 3

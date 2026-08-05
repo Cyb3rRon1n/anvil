@@ -116,6 +116,51 @@ def test_write_stack_heavy_amd_with_comfyui_requested_renders_rocm_image(tmp_pat
     assert not any("was requested but skipped" in warning for warning in result["warnings"])
 
 
+def test_write_stack_heavy_amd_with_comfyui_warns_about_missing_manager(tmp_path):
+    """
+    Real, vendor-specific gap: unlike NVIDIA's and Intel's images, the
+    AMD ComfyUI image doesn't bundle ComfyUI-Manager - confirmed by
+    reading each image's own docs. Not auto-fixed (would need git and
+    network access at generate time, plus a pip install step that only
+    makes sense once the container exists), so this is a warning with
+    the real fix commands, not a silent no-op.
+    """
+
+    with patch("installer.generate.detect_render_group_gid", return_value=44):
+
+        config = make_config(
+            "heavy",
+            gpu=GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480),
+            enabled_optional={"comfyui"}
+        )
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "ComfyUI-Manager" in warning and "pip install" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_heavy_nvidia_and_intel_never_warn_about_comfyui_manager(tmp_path):
+
+    nvidia_config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288),
+        enabled_optional={"comfyui"}
+    )
+    nvidia_result = write_stack(nvidia_config, output_dir=tmp_path / "nvidia-stack")
+
+    intel_config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384),
+        enabled_optional={"comfyui"}
+    )
+    intel_result = write_stack(intel_config, output_dir=tmp_path / "intel-stack")
+
+    assert not any("ComfyUI-Manager" in warning for warning in nvidia_result["warnings"])
+    assert not any("ComfyUI-Manager" in warning for warning in intel_result["warnings"])
+
+
 def test_write_stack_heavy_intel_with_comfyui_requested_renders_xpu_image(tmp_path):
 
     config = make_config(
@@ -252,3 +297,81 @@ def test_write_stack_no_port_conflicts_produces_no_port_warning(tmp_path):
         result = write_stack(config, output_dir=tmp_path / "stack")
 
     assert not any("Port" in warning for warning in result["warnings"])
+
+
+def test_write_stack_dashboard_port_conflict_warns(tmp_path):
+
+    config = make_config("light")
+
+    with patch("installer.generate.port_in_use", side_effect=lambda port: port == 8080):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "Port 8080" in warning and "dashboard container will fail to bind" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_always_renders_dashboard_service(tmp_path):
+    """
+    Unlike ollama/open-webui/comfyui, the dashboard isn't a tiers.py
+    ServiceDefinition - it's not user-choosable or tier-gated, so it
+    should render for every tier, GPU or not.
+    """
+
+    for tier_name in ("light", "medium", "heavy"):
+
+        config = make_config(tier_name)
+        write_stack(config, output_dir=tmp_path / tier_name)
+
+        compose = (tmp_path / tier_name / "docker-compose.yml").read_text()
+
+        assert "dashboard:" in compose
+        assert "nginx:alpine" in compose
+        assert '"8080:80"' in compose
+
+
+def test_write_stack_writes_dashboard_index_html(tmp_path):
+
+    config = make_config("light")
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    index_html = (tmp_path / "stack" / "dashboard" / "index.html").read_text()
+
+    assert "<html" in index_html
+    assert "Open WebUI" in index_html
+
+
+def test_dashboard_links_reflect_enabled_services_and_use_detected_host(tmp_path):
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+
+        light_config = make_config("light")
+        write_stack(light_config, output_dir=tmp_path / "light-stack")
+        light_html = (tmp_path / "light-stack" / "dashboard" / "index.html").read_text()
+
+        heavy_config = make_config(
+            "heavy",
+            gpu=GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288),
+            enabled_optional={"comfyui"}
+        )
+        write_stack(heavy_config, output_dir=tmp_path / "heavy-stack")
+        heavy_html = (tmp_path / "heavy-stack" / "dashboard" / "index.html").read_text()
+
+    assert "http://192.168.1.50:3000" in light_html
+    assert "http://192.168.1.50:11434" in light_html
+    assert "http://192.168.1.50:8188" not in light_html
+
+    assert "http://192.168.1.50:8188" in heavy_html
+
+
+def test_dashboard_falls_back_to_localhost_when_host_ip_undetected(tmp_path):
+
+    with patch("installer.generate.detect_host_ip", return_value=None):
+
+        config = make_config("light")
+        write_stack(config, output_dir=tmp_path / "stack")
+
+    index_html = (tmp_path / "stack" / "dashboard" / "index.html").read_text()
+
+    assert "http://localhost:3000" in index_html

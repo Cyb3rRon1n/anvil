@@ -320,6 +320,29 @@ def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
             return False
 
 
+def detect_host_ip() -> str | None:
+    """
+    Best-effort LAN-facing address for the dashboard's links - ported
+    from Vulcan's own detect_host_ip(), same reasoning: "localhost" in
+    a generated page is only correct when viewed from the machine
+    itself, and a GPU-compute box is often a headless server accessed
+    from another device's browser. A UDP "connect" sends no actual
+    packets (UDP has no handshake); it only asks the kernel's routing
+    table which local address it would use to reach that destination,
+    which is exactly the address other devices on the same network can
+    reach this host at.
+    """
+
+    try:
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+
+    except OSError:
+        return None
+
+
 def detect_docker() -> dict:
 
     installed = shutil.which("docker") is not None

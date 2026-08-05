@@ -15,7 +15,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from installer.detect import GpuInfo, detect_render_group_gid, port_in_use
+from installer.detect import GpuInfo, detect_host_ip, detect_render_group_gid, port_in_use
 from installer.tiers import TIERS, TierDefinition, enabled_service_keys
 
 
@@ -28,6 +28,12 @@ STATE_FILENAME = ".anvil-state.json"
 # same convention as the vendor-specific knowledge already hardcoded
 # below for the NVIDIA Container Toolkit warning.
 SERVICE_PORTS = {"ollama": 11434, "open-webui": 3000, "comfyui": 8188}
+
+# The dashboard isn't a tiers.py ServiceDefinition (not user-choosable,
+# not tier-gated) - it's always rendered, so its port gets its own
+# constant and its own conflict check rather than living in
+# SERVICE_PORTS, which is only ever walked over the `enabled` set.
+DASHBOARD_PORT = 8080
 
 
 @dataclass
@@ -99,6 +105,16 @@ def render_compose(config: GenerationConfig) -> str:
     )
 
 
+def render_dashboard(config: GenerationConfig) -> str:
+
+    template = _jinja_env().get_template("dashboard.html.j2")
+
+    return template.render(
+        enabled=enabled_service_keys(config.tier, config.gpu, config.enabled_optional),
+        host=detect_host_ip() or "localhost"
+    )
+
+
 def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     output_dir = Path(output_dir)
@@ -112,6 +128,10 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     for key in enabled:
         (output_dir / "data" / key).mkdir(parents=True, exist_ok=True)
+
+    dashboard_dir = output_dir / "dashboard"
+    dashboard_dir.mkdir(parents=True, exist_ok=True)
+    (dashboard_dir / "index.html").write_text(render_dashboard(config))
 
     warnings = []
 
@@ -153,6 +173,34 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "detection above already confirmed - Anvil doesn't install it automatically. "
             "Install guide: "
             "https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+        )
+
+    if config.gpu and config.gpu.vendor == "amd" and "comfyui" in enabled:
+
+        # A real, vendor-specific gap, confirmed by reading each image's
+        # own docs/entrypoint rather than assumed: NVIDIA's
+        # (mmartial/comfyui-nvidia-docker) and Intel's
+        # (yanwk/comfyui-boot) images both bundle ComfyUI-Manager
+        # already; AMD's (corundex/comfyui-rocm) doesn't. A bare git
+        # clone into the custom_nodes volume alone wouldn't be enough
+        # to fix it, either - confirmed by reading the image's real
+        # startup.sh, which starts ComfyUI directly with no step that
+        # installs a custom node's own requirements.txt, so Manager
+        # would very likely fail to import without the pip install
+        # below. Not automated here: doing this from write_stack()
+        # would need git and network access at generate time (neither
+        # assumed anywhere else in this codebase) to reliably clone
+        # into place, and even then the pip install step still has to
+        # run inside the container after it exists - safer and more
+        # honest to hand the user the exact real commands.
+        warnings.append(
+            "This AMD ComfyUI image doesn't include ComfyUI-Manager (NVIDIA and Intel "
+            "Arc's images both do) - add it once after your first start:\n"
+            "    git clone https://github.com/Comfy-Org/ComfyUI-Manager "
+            f"{output_dir}/data/comfyui/custom_nodes/ComfyUI-Manager\n"
+            "    docker compose exec comfyui pip install -r "
+            "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/requirements.txt\n"
+            "    docker compose restart comfyui"
         )
 
     if "open-webui" in enabled and "comfyui" in enabled:
@@ -205,6 +253,13 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                     f"Port {port} is already in use by something else on this host - "
                     f"the {key} container will fail to bind it until that's freed."
                 )
+
+    if port_in_use(DASHBOARD_PORT):
+
+        warnings.append(
+            f"Port {DASHBOARD_PORT} is already in use by something else on this host - "
+            "the dashboard container will fail to bind it until that's freed."
+        )
 
     return {
         "success": True,
