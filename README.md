@@ -2,9 +2,13 @@
 
 **A GPU-compute creativity forge.** *(working title — rename freely, nothing depends on it yet)*
 
-Sibling project to [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge) in the same spirit: inspect a machine's real hardware, recommend a tier it can actually run, generate a ready-to-run Docker Compose stack. Where Vulcan sizes for CPU/RAM/disk, Anvil sizes for **GPU VRAM** — because the workload is different. A local LLM or an image-generation pipeline lives or dies by how much VRAM is actually available, not how many CPU cores the host has.
+- **What** — Detects your GPU's real VRAM, recommends a sized tier, and generates a ready-to-run Docker Compose stack for local LLMs and image generation.
+- **Who it's for** — Homelab and self-hosted folks who want a local AI/creative setup without hand-researching VRAM requirements, Docker images, and GPU passthrough flags per vendor.
+- **Why** — Local LLM and image-generation workloads are VRAM-bound, a different sizing problem than [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge, Anvil's sibling project) solves for CPU/RAM/disk.
+- **Where** — Any Linux host with Docker and a real NVIDIA, AMD, or Intel Arc GPU.
+- **When to use it** — Real, working build, not a proof of concept. Honest gaps are documented, not hidden — see [CLAUDE.md](CLAUDE.md) for exactly what's verified against real hardware and what isn't yet.
 
-**Status: real, working build.** Guided TUI by default, plus a scriptable CLI (`--plain`/`--non-interactive`) — detects your GPU's real VRAM (a functional query, not just "is a tool installed"), recommends a tier, generates a Docker Compose stack for Ollama + Open WebUI (+ ComfyUI at Heavy tier — NVIDIA, AMD, and Intel Arc all have a real, verified image). Verified against real containers on real hardware where possible; the honest gap (ComfyUI never run against real discrete GPU hardware of any vendor — none exists in this project's environment) is documented in [CLAUDE.md](CLAUDE.md), not hidden.
+**Status:** Guided TUI by default, plus a scriptable CLI (`--plain`/`--non-interactive`) — detects your GPU's real VRAM (a functional query, not just "is a tool installed"), recommends a tier, generates a Docker Compose stack for Ollama + Open WebUI (+ ComfyUI at Heavy tier — NVIDIA, AMD, and Intel Arc all have a real, verified image). Verified against real containers on real hardware where possible; the honest gap (ComfyUI never run against real discrete GPU hardware of any vendor — none exists in this project's environment) is documented in [CLAUDE.md](CLAUDE.md), not hidden.
 
 ## Quick start
 
@@ -38,3 +42,7 @@ Tiers are based on your GPU's real detected VRAM: **Light** (any real VRAM, smal
 ## What's reused from Vulcan vs. genuinely new
 
 See [CLAUDE.md](CLAUDE.md) for the full breakdown — architecture pattern and project discipline carry over, the tier/sizing model and GPU detection do not.
+
+## License
+
+[MIT](LICENSE)
