@@ -27,7 +27,7 @@ class ServiceDefinition:
     key: str
     display_name: str
     optional: bool = False
-    vendor_restriction: str | None = None  # e.g. "nvidia" - None means vendor-agnostic
+    vendor_restrictions: frozenset[str] | None = None  # e.g. {"nvidia", "amd"} - None means vendor-agnostic
 
 
 @dataclass
@@ -49,7 +49,7 @@ _MEDIUM_SERVICES = list(_LIGHT_SERVICES)
 _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition(
         "comfyui", "ComfyUI (image generation)",
-        optional=True, vendor_restriction="nvidia"
+        optional=True, vendor_restrictions=frozenset({"nvidia", "amd"})
     ),
 ]
 
@@ -117,7 +117,7 @@ def enabled_service_keys(tier: TierDefinition, gpu: GpuInfo | None, enabled_opti
         if service.optional and service.key not in enabled_optional:
             continue
 
-        if service.vendor_restriction and (gpu is None or gpu.vendor != service.vendor_restriction):
+        if service.vendor_restrictions and (gpu is None or gpu.vendor not in service.vendor_restrictions):
             continue
 
         keys.add(service.key)

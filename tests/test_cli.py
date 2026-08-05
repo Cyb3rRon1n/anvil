@@ -112,9 +112,36 @@ def test_non_interactive_heavy_nvidia_with_comfyui_flag_enables_it(tmp_path):
     assert config.enabled_optional == {"comfyui"}
 
 
-def test_non_interactive_heavy_amd_defaults_comfyui_off(tmp_path):
+def test_non_interactive_heavy_amd_defaults_comfyui_on(tmp_path):
+    """
+    AMD has a real, verified ComfyUI image now (corundex/comfyui-rocm)
+    - a fresh non-interactive run defaults it on, matching NVIDIA's
+    own default-on behavior, since it's real, verified, and supported.
+    """
 
     info = make_system_info(gpus=[GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480)])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional == {"comfyui"}
+
+
+def test_non_interactive_heavy_intel_defaults_comfyui_off(tmp_path):
+    """
+    Intel Arc has no real, verified ComfyUI image yet - unlike NVIDIA/
+    AMD, this must not default to requesting something unsupported.
+    """
+
+    info = make_system_info(gpus=[GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)])
 
     with patch("installer.cli.detect_system", return_value=info), patch(
         "installer.cli.STACK_DIR", tmp_path / "stack"

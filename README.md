@@ -4,7 +4,7 @@
 
 Sibling project to [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge) in the same spirit: inspect a machine's real hardware, recommend a tier it can actually run, generate a ready-to-run Docker Compose stack. Where Vulcan sizes for CPU/RAM/disk, Anvil sizes for **GPU VRAM** — because the workload is different. A local LLM or an image-generation pipeline lives or dies by how much VRAM is actually available, not how many CPU cores the host has.
 
-**Status: real, working build.** Guided TUI by default, plus a scriptable CLI (`--plain`/`--non-interactive`) — detects your GPU's real VRAM (a functional query, not just "is a tool installed"), recommends a tier, generates a Docker Compose stack for Ollama + Open WebUI (+ ComfyUI at Heavy tier on NVIDIA). Verified against real containers on real hardware where possible; the honest gaps (ComfyUI never run against a real NVIDIA GPU, no ROCm/Intel ComfyUI image yet) are documented in [CLAUDE.md](CLAUDE.md), not hidden.
+**Status: real, working build.** Guided TUI by default, plus a scriptable CLI (`--plain`/`--non-interactive`) — detects your GPU's real VRAM (a functional query, not just "is a tool installed"), recommends a tier, generates a Docker Compose stack for Ollama + Open WebUI (+ ComfyUI at Heavy tier on NVIDIA or AMD). Verified against real containers on real hardware where possible; the honest gaps (ComfyUI never run against real NVIDIA/AMD hardware, no Intel Arc ComfyUI image yet) are documented in [CLAUDE.md](CLAUDE.md), not hidden.
 
 ## Quick start
 
@@ -31,7 +31,7 @@ Scoped out during a Vulcan session that considered and rejected folding "creativ
 
 - **Ollama** — local LLM runtime, OpenAI-compatible API. Pulls and manages its own models.
 - **Open WebUI** — ChatGPT-style frontend for Ollama. No setup beyond picking a model on first visit.
-- **ComfyUI** *(Heavy tier, NVIDIA only)* — node-based image generation. Wires into Open WebUI for inline image generation once both are up — Anvil tells you exactly where to click (Admin Panel > Settings > Images) since that connection is a runtime setting, not something a compose file can do for you. Model checkpoints need to be placed manually; unlike Ollama, ComfyUI doesn't manage its own downloads.
+- **ComfyUI** *(Heavy tier, NVIDIA or AMD)* — node-based image generation. Wires into Open WebUI for inline image generation once both are up — Anvil tells you exactly where to click (Admin Panel > Settings > Images) since that connection is a runtime setting, not something a compose file can do for you. Model checkpoints need to be placed manually; unlike Ollama, ComfyUI doesn't manage its own downloads. No Intel Arc image exists yet — see [CLAUDE.md](CLAUDE.md).
 
 Tiers are based on your GPU's real detected VRAM: **Light** (any real VRAM, small/quantized models), **Medium** (8GB+, comfortable up to ~14B models), **Heavy** (12GB+, adds ComfyUI). See [CLAUDE.md](CLAUDE.md) for where these numbers come from and what's still unverified.
 

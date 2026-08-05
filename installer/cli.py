@@ -145,29 +145,37 @@ def run_install(
 
     if chosen_tier_name == "heavy":
 
-        is_nvidia = gpu is not None and gpu.vendor == "nvidia"
+        # NVIDIA and AMD both have a real, verified ComfyUI image now
+        # (mmartial/comfyui-nvidia-docker, corundex/comfyui-rocm) -
+        # Intel Arc doesn't yet, see CLAUDE.md's still-open questions.
+        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
 
         # Never defaults to "wanted" on hardware that can't actually
-        # render it (only NVIDIA has a real, verified ComfyUI image) -
-        # a real bug caught by testing: the previous version of this
-        # default was a blind True, which meant a fresh non-interactive
-        # run on AMD/Intel silently requested ComfyUI anyway, relying
-        # on write_stack()'s vendor gate to quietly drop it and warn
-        # rather than the CLI's own default being honest up front.
+        # render it - a real bug caught by testing: an earlier version
+        # of this default was a blind True, which meant a fresh
+        # non-interactive run on unsupported hardware silently
+        # requested ComfyUI anyway, relying on write_stack()'s vendor
+        # gate to quietly drop it and warn rather than the CLI's own
+        # default being honest up front.
         comfyui_default = (
-            "comfyui" in previous["enabled_optional"] if previous else is_nvidia
-        ) and is_nvidia
+            "comfyui" in previous["enabled_optional"] if previous else comfyui_supported
+        ) and comfyui_supported
 
         if comfyui is None:
 
             if non_interactive:
                 enable_comfyui = comfyui_default
-            elif is_nvidia:
+            elif comfyui_supported:
+
+                models_path = (
+                    "stack/data/comfyui/basedir/models" if gpu.vendor == "nvidia"
+                    else "stack/data/comfyui/models"
+                )
 
                 enable_comfyui = typer.confirm(
                     "Enable ComfyUI (image generation)? Model checkpoints have to be placed "
-                    "manually under stack/data/comfyui/basedir/models after first start - "
-                    "Ollama pulls its own models automatically, ComfyUI does not.",
+                    f"manually under {models_path} after first start - Ollama pulls its own "
+                    "models automatically, ComfyUI does not.",
                     default=comfyui_default
                 )
 

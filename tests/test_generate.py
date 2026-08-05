@@ -79,11 +79,31 @@ def test_write_stack_heavy_nvidia_with_comfyui_requested_includes_it(tmp_path):
     assert any("NVIDIA Container Toolkit" in warning for warning in result["warnings"])
 
 
-def test_write_stack_heavy_amd_with_comfyui_requested_warns_and_omits(tmp_path):
+def test_write_stack_heavy_amd_with_comfyui_requested_renders_rocm_image(tmp_path):
+
+    with patch("installer.generate.detect_render_group_gid", return_value=44):
+
+        config = make_config(
+            "heavy",
+            gpu=GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480),
+            enabled_optional={"comfyui"}
+        )
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "comfyui:" in compose
+    assert "corundex/comfyui-rocm" in compose
+    assert "/dev/kfd" in compose
+    assert "mmartial/comfyui-nvidia-docker" not in compose
+    assert not any("was requested but skipped" in warning for warning in result["warnings"])
+
+
+def test_write_stack_heavy_intel_with_comfyui_requested_warns_and_omits(tmp_path):
 
     config = make_config(
         "heavy",
-        gpu=GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480),
+        gpu=GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384),
         enabled_optional={"comfyui"}
     )
     result = write_stack(config, output_dir=tmp_path / "stack")
@@ -91,7 +111,7 @@ def test_write_stack_heavy_amd_with_comfyui_requested_warns_and_omits(tmp_path):
     compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
 
     assert "comfyui:" not in compose
-    assert any("NVIDIA-only" in warning for warning in result["warnings"])
+    assert any("was requested but skipped" in warning for warning in result["warnings"])
 
 
 def test_write_stack_nvidia_warns_about_container_toolkit(tmp_path):

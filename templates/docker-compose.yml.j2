@@ -41,7 +41,7 @@ services:
       - ollama
     restart: unless-stopped
 {% endif %}
-{% if 'comfyui' in enabled %}
+{% if 'comfyui' in enabled and gpu_vendor == 'nvidia' %}
   comfyui:
     image: mmartial/comfyui-nvidia-docker:latest
     container_name: comfyui
@@ -62,5 +62,25 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    restart: unless-stopped
+{% elif 'comfyui' in enabled and gpu_vendor == 'amd' %}
+  comfyui:
+    image: corundex/comfyui-rocm:latest
+    container_name: comfyui
+    devices:
+      - /dev/kfd
+      - /dev/dri
+{% if render_gid %}
+    group_add:
+      - "{{ render_gid }}"
+{% endif %}
+    volumes:
+      - ./data/comfyui/models:/workspace/ComfyUI/models
+      - ./data/comfyui/output:/workspace/ComfyUI/output
+      - ./data/comfyui/input:/workspace/ComfyUI/input
+      - ./data/comfyui/custom_nodes:/workspace/ComfyUI/custom_nodes
+      - ./data/comfyui/user:/workspace/ComfyUI/user
+    ports:
+      - "8188:8188"
     restart: unless-stopped
 {% endif %}

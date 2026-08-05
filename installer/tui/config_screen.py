@@ -33,11 +33,17 @@ class ConfigScreen(Screen):
             default_puid = previous["puid"]
             default_pgid = previous["pgid"]
 
-        is_nvidia = self.app.gpu is not None and self.app.gpu.vendor == "nvidia"
+        gpu = self.app.gpu
+        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
 
         comfyui_default = (
-            "comfyui" in previous["enabled_optional"] if previous else is_nvidia
-        ) and is_nvidia
+            "comfyui" in previous["enabled_optional"] if previous else comfyui_supported
+        ) and comfyui_supported
+
+        models_path = (
+            "stack/data/comfyui/basedir/models" if gpu is not None and gpu.vendor == "nvidia"
+            else "stack/data/comfyui/models"
+        )
 
         yield Vertical(
             Static(recommendation.explanation, id="recommendation"),
@@ -50,9 +56,8 @@ class ConfigScreen(Screen):
             Checkbox(
                 "Enable ComfyUI (image generation)", value=comfyui_default, id="comfyui-check",
                 tooltip=(
-                    "Model checkpoints have to be placed manually under "
-                    "stack/data/comfyui/basedir/models after first start - Ollama pulls its "
-                    "own models automatically, ComfyUI does not."
+                    f"Model checkpoints have to be placed manually under {models_path} after "
+                    "first start - Ollama pulls its own models automatically, ComfyUI does not."
                 )
             ),
             Input(
@@ -78,8 +83,9 @@ class ConfigScreen(Screen):
 
     def _update_comfyui_visibility(self, tier_id: str) -> None:
 
-        is_nvidia = self.app.gpu is not None and self.app.gpu.vendor == "nvidia"
-        self.query_one("#comfyui-check", Checkbox).display = tier_id == "heavy" and is_nvidia
+        gpu = self.app.gpu
+        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
+        self.query_one("#comfyui-check", Checkbox).display = tier_id == "heavy" and comfyui_supported
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._update_comfyui_visibility(event.pressed.id)

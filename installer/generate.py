@@ -118,10 +118,11 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     if heavy_wants_comfyui:
 
         warnings.append(
-            "ComfyUI was requested but skipped: the only real, verified image for it "
-            f"(mmartial/comfyui-nvidia-docker) is NVIDIA-only, and this host's detected "
-            f"GPU is {config.gpu.vendor if config.gpu else 'none'}. A ROCm/Intel-compatible "
-            "image hasn't been researched yet - see CLAUDE.md's still-open questions."
+            "ComfyUI was requested but skipped: the only real, verified images for it "
+            "(mmartial/comfyui-nvidia-docker for NVIDIA, corundex/comfyui-rocm for AMD) "
+            f"support NVIDIA and AMD only, and this host's detected GPU is "
+            f"{config.gpu.vendor if config.gpu else 'none'}. An Intel Arc-compatible image "
+            "hasn't been researched yet - see CLAUDE.md's still-open questions."
         )
 
     if config.gpu and config.gpu.vendor == "nvidia" and enabled:

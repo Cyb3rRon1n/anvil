@@ -59,15 +59,28 @@ def test_enabled_service_keys_heavy_nvidia_includes_comfyui_when_requested():
     }
 
 
-def test_enabled_service_keys_heavy_amd_excludes_comfyui_even_when_requested():
+def test_enabled_service_keys_heavy_amd_includes_comfyui_when_requested():
     """
-    Real constraint, not a bug: the only verified ComfyUI image is
-    NVIDIA-only (mmartial/comfyui-nvidia-docker) - a ROCm/Intel image
-    hasn't been researched yet, so this must not silently claim
-    ComfyUI on hardware it can't actually run on.
+    AMD has a real, verified ComfyUI image too (corundex/comfyui-rocm,
+    targeting RX 6000/7000+ consumer GPUs) - confirmed real and
+    published via `docker manifest inspect`, not assumed.
     """
 
     gpu = GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480)
+
+    assert enabled_service_keys(TIERS["heavy"], gpu, {"comfyui"}) == {
+        "ollama", "open-webui", "comfyui"
+    }
+
+
+def test_enabled_service_keys_heavy_intel_excludes_comfyui_even_when_requested():
+    """
+    Real constraint, not a bug: no Intel Arc-compatible ComfyUI image
+    has been researched yet, so this must not silently claim ComfyUI
+    on hardware it can't actually run on.
+    """
+
+    gpu = GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)
 
     assert enabled_service_keys(TIERS["heavy"], gpu, {"comfyui"}) == {"ollama", "open-webui"}
 
