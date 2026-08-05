@@ -103,3 +103,27 @@ def test_enabled_service_keys_heavy_without_requesting_comfyui_omits_it():
     gpu = GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)
 
     assert enabled_service_keys(TIERS["heavy"], gpu, set()) == {"ollama", "open-webui"}
+
+
+def test_every_tier_has_a_real_nonempty_capability_note():
+
+    for tier in TIERS.values():
+        assert isinstance(tier.capability_note, str)
+        assert len(tier.capability_note) > 0
+
+
+def test_medium_capability_note_no_longer_claims_comfortable_14b():
+    """
+    Regression lock for the corrected claim: real Ollama Q4_K_M sizes
+    (Qwen2.5 14B = 9.0GB) show a 14B model doesn't leave real context
+    headroom on an 8GB card - that comfort level belongs at Heavy
+    (12GB), not Medium. See tiers.py's module docstring/CLAUDE.md for
+    the full math.
+    """
+
+    assert "Comfortable for 14B" not in TIERS["medium"].capability_note
+    assert "little room to spare" in TIERS["medium"].capability_note
+
+
+def test_heavy_capability_note_claims_14b_comfort():
+    assert "14B" in TIERS["heavy"].capability_note

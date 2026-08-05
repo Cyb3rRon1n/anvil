@@ -39,6 +39,7 @@ class ReviewScreen(Screen):
 
         summary = (
             f"Tier: {tier.display_name}\n"
+            f"  {tier.capability_note}\n"
             f"GPU: {gpu.vendor.upper() if gpu else 'none'}\n"
             f"PUID/PGID: {self.app.puid}/{self.app.pgid}\n"
             f"ComfyUI: {'enabled' if 'comfyui' in self.app.enabled_optional else 'disabled'}"

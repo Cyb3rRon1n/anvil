@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from textual.widgets import Button, Checkbox, Input, RadioSet, Static
+from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
 
 from installer.detect import GpuInfo, SystemInfo
 from installer.tui.app import AnvilApp
@@ -106,6 +106,23 @@ async def test_config_screen_defaults_to_recommended_tier():
 
         radio_set = app.screen.query_one("#tier-set", RadioSet)
         assert radio_set.pressed_button.id == "medium"
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_config_screen_tier_radio_buttons_have_real_capability_tooltips():
+
+    from installer.tiers import TIERS
+
+    app, pilot, ctx = await _launch_at_config_screen(make_system_info())
+
+    try:
+
+        for tier_id in ("light", "medium", "heavy"):
+
+            button = app.screen.query_one(f"#{tier_id}", RadioButton)
+            assert button.tooltip == TIERS[tier_id].capability_note
 
     finally:
         await ctx.__aexit__(None, None, None)

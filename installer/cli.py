@@ -215,6 +215,7 @@ def run_install(
 
     console.print("\n[bold]Review[/bold]")
     console.print(f"  Tier: {chosen_tier.display_name}")
+    console.print(f"    {chosen_tier.capability_note}")
     console.print(f"  GPU: {gpu.vendor.upper() if gpu else 'none'}")
     console.print(f"  PUID/PGID: {final_puid}/{final_pgid}")
     console.print(f"  ComfyUI: {'enabled' if 'comfyui' in enabled_optional else 'disabled'}")

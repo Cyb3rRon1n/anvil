@@ -2,12 +2,20 @@
 Deterministic VRAM-based tier scoring - no LLM in the decision path,
 mirroring Vulcan's own "deterministic, not AI-driven" tier principle
 even though the workload being sized for happens to be AI. Thresholds
-(8GB, 12GB) come from real, commonly-cited community figures researched
-for this project (8GB+ VRAM is the widely-repeated threshold for
-comfortably running ~14B-class local LLMs and usable image generation;
-12GB+ is the frequently-cited "sweet spot," with the RTX 3060 12GB
-specifically named as the reference card) - not independently verified
-against a real model load yet, see CLAUDE.md's still-open questions.
+(8GB, 12GB) started as real, commonly-cited community figures - since
+verified against real, hard numbers instead: Ollama's own published
+Q4_K_M download sizes (Llama 3.1 8B = 4.9GB, Qwen2.5 14B = 9.0GB) and
+cross-referenced SDXL/ComfyUI VRAM guidance (12GB repeatedly cited as
+the real sweet spot for a refiner pipeline). See CLAUDE.md's "model
+capability verification" entry for the full source list and math.
+
+That verification corrected one thing: the original claim that 8GB is
+"comfortable up to ~14B models" was optimistic - a 14B model's weights
+alone already consume 9GB at Q4_K_M, leaving little headroom for
+context on an 8GB card. 14B-class comfort genuinely belongs at the
+12GB Heavy tier, not Medium; each tier's `capability_note` below
+reflects the corrected claim, not the original one - the two 8/12GB
+threshold numbers themselves held up fine and didn't need to move.
 
 A host with no real dedicated VRAM (integrated-only graphics, or no
 GPU at all) gets no tier at all - a deliberate scoping decision, not
@@ -37,6 +45,7 @@ class TierDefinition:
     display_name: str
     min_vram_gb: float
     services: list[ServiceDefinition]
+    capability_note: str
 
 
 _LIGHT_SERVICES = [
@@ -54,9 +63,30 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
 ]
 
 TIERS: dict[str, TierDefinition] = {
-    "light": TierDefinition("light", "Light", min_vram_gb=0.0, services=_LIGHT_SERVICES),
-    "medium": TierDefinition("medium", "Medium", min_vram_gb=8.0, services=_MEDIUM_SERVICES),
-    "heavy": TierDefinition("heavy", "Heavy", min_vram_gb=12.0, services=_HEAVY_SERVICES),
+    "light": TierDefinition(
+        "light", "Light", min_vram_gb=0.0, services=_LIGHT_SERVICES,
+        capability_note=(
+            "Small quantized models only (roughly 1-3B at Q4); a 7B model "
+            "(~5GB at Q4_K_M) may fit on the higher end of this range but with little "
+            "headroom for context."
+        )
+    ),
+    "medium": TierDefinition(
+        "medium", "Medium", min_vram_gb=8.0, services=_MEDIUM_SERVICES,
+        capability_note=(
+            "Comfortable for 7-9B-class models (e.g. Llama 3.1 8B, ~4.9GB at Q4_K_M) "
+            "with real headroom for context. 12-14B models fit VRAM-wise but leave "
+            "little room to spare - see Heavy."
+        )
+    ),
+    "heavy": TierDefinition(
+        "heavy", "Heavy", min_vram_gb=12.0, services=_HEAVY_SERVICES,
+        capability_note=(
+            "Comfortable for 12-14B-class models (e.g. Qwen2.5 14B, ~9GB at Q4_K_M) "
+            "with real context headroom, and the commonly-cited sweet spot for SDXL "
+            "image generation via ComfyUI."
+        )
+    ),
 }
 
 ALL_SERVICES: list[ServiceDefinition] = _HEAVY_SERVICES

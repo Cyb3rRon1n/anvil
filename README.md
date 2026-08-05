@@ -33,7 +33,7 @@ Scoped out during a Vulcan session that considered and rejected folding "creativ
 - **Open WebUI** — ChatGPT-style frontend for Ollama. No setup beyond picking a model on first visit.
 - **ComfyUI** *(Heavy tier, NVIDIA, AMD, or Intel Arc)* — node-based image generation. Wires into Open WebUI for inline image generation once both are up — Anvil tells you exactly where to click (Admin Panel > Settings > Images) since that connection is a runtime setting, not something a compose file can do for you. Model checkpoints need to be placed manually; unlike Ollama, ComfyUI doesn't manage its own downloads.
 
-Tiers are based on your GPU's real detected VRAM: **Light** (any real VRAM, small/quantized models), **Medium** (8GB+, comfortable up to ~14B models), **Heavy** (12GB+, adds ComfyUI). See [CLAUDE.md](CLAUDE.md) for where these numbers come from and what's still unverified.
+Tiers are based on your GPU's real detected VRAM: **Light** (any real VRAM, small quantized models), **Medium** (8GB+, comfortable for 7-9B-class LLMs like Llama 3.1 8B), **Heavy** (12GB+, comfortable for 12-14B-class LLMs like Qwen2.5 14B, plus ComfyUI). Anvil shows you this breakdown for whichever tier you pick, not just its name. See [CLAUDE.md](CLAUDE.md) for the real Ollama/SDXL numbers these are based on.
 
 ## What's reused from Vulcan vs. genuinely new
 

@@ -4,7 +4,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
 
 from installer.generate import default_puid_pgid
-from installer.tiers import recommend_tier
+from installer.tiers import TIERS, recommend_tier
 from installer.tui.review_screen import ReviewScreen
 
 
@@ -48,9 +48,18 @@ class ConfigScreen(Screen):
         yield Vertical(
             Static(recommendation.explanation, id="recommendation"),
             RadioSet(
-                RadioButton("Light", id="light", value=default_tier == "light"),
-                RadioButton("Medium", id="medium", value=default_tier == "medium"),
-                RadioButton("Heavy", id="heavy", value=default_tier == "heavy"),
+                RadioButton(
+                    "Light", id="light", value=default_tier == "light",
+                    tooltip=TIERS["light"].capability_note
+                ),
+                RadioButton(
+                    "Medium", id="medium", value=default_tier == "medium",
+                    tooltip=TIERS["medium"].capability_note
+                ),
+                RadioButton(
+                    "Heavy", id="heavy", value=default_tier == "heavy",
+                    tooltip=TIERS["heavy"].capability_note
+                ),
                 id="tier-set"
             ),
             Checkbox(
