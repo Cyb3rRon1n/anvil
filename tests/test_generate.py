@@ -1,8 +1,25 @@
 from unittest.mock import patch
 
+import pytest
+
 from installer.detect import GpuInfo
 from installer.generate import GenerationConfig, load_previous_state, save_state, write_stack
 from installer.tiers import TIERS
+
+
+@pytest.fixture(autouse=True)
+def no_real_port_conflicts():
+    """
+    write_stack() now does a real TCP connect per enabled service's
+    port (port_in_use()) - hermetic by default here so a real ambient
+    service on the machine running these tests (this dev machine has a
+    genuine native Ollama on 11434) can't leak into unrelated test
+    assertions. Tests that actually exercise port-conflict behavior
+    override this with their own nested patch.
+    """
+
+    with patch("installer.generate.port_in_use", return_value=False):
+        yield
 
 
 def make_config(tier_name, gpu=None, enabled_optional=None):
@@ -195,3 +212,43 @@ def test_save_and_load_previous_state_round_trips(tmp_path):
 
 def test_load_previous_state_missing_file_returns_none(tmp_path):
     assert load_previous_state(tmp_path) is None
+
+
+def test_write_stack_ollama_port_in_use_warns_with_native_install_guidance(tmp_path):
+
+    config = make_config("light")
+
+    with patch("installer.generate.port_in_use", side_effect=lambda port: port == 11434):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "Port 11434" in warning and "systemctl status ollama" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_comfyui_port_in_use_warns_generically(tmp_path):
+
+    config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288),
+        enabled_optional={"comfyui"}
+    )
+
+    with patch("installer.generate.port_in_use", side_effect=lambda port: port == 8188):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "Port 8188" in warning and "comfyui container will fail to bind" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_no_port_conflicts_produces_no_port_warning(tmp_path):
+
+    config = make_config("light")
+
+    with patch("installer.generate.port_in_use", return_value=False):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("Port" in warning for warning in result["warnings"])

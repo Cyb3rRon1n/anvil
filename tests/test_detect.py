@@ -1,3 +1,4 @@
+import socket
 from unittest.mock import MagicMock, patch
 
 from installer.detect import (
@@ -6,6 +7,7 @@ from installer.detect import (
     detect_intel_gpus,
     detect_nvidia_gpus,
     detect_primary_gpu,
+    port_in_use,
 )
 
 
@@ -116,3 +118,31 @@ def test_detect_primary_gpu_picks_largest_card_not_sum():
 
 def test_detect_primary_gpu_none_when_no_gpus():
     assert detect_primary_gpu([]) is None
+
+
+def test_port_in_use_true_for_a_real_bound_port():
+
+    # Real functional check, no mocking - bind an actual listening
+    # socket on an OS-assigned ephemeral port and confirm it's
+    # detected, the same way a real native service would be.
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+
+    try:
+        port = listener.getsockname()[1]
+        assert port_in_use(port) is True
+    finally:
+        listener.close()
+
+
+def test_port_in_use_false_for_a_closed_port():
+
+    # Bind-then-immediately-close to get a real ephemeral port number
+    # that's genuinely free right now, rather than guessing a literal.
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+
+    assert port_in_use(port) is False

@@ -15,13 +15,19 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from installer.detect import GpuInfo, detect_render_group_gid
+from installer.detect import GpuInfo, detect_render_group_gid, port_in_use
 from installer.tiers import TIERS, TierDefinition, enabled_service_keys
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 STACK_DIR = Path("stack")
 STATE_FILENAME = ".anvil-state.json"
+
+# The one port per service the compose template ever publishes -
+# mirrors the hardcoded "ports:" values in docker-compose.yml.j2,
+# same convention as the vendor-specific knowledge already hardcoded
+# below for the NVIDIA Container Toolkit warning.
+SERVICE_PORTS = {"ollama": 11434, "open-webui": 3000, "comfyui": 8188}
 
 
 @dataclass
@@ -157,6 +163,48 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "set the engine to ComfyUI, and point it at http://comfyui:8188, then click "
             "Verify Connection."
         )
+
+    for key in enabled:
+
+        port = SERVICE_PORTS.get(key)
+
+        if port is not None and port_in_use(port):
+
+            if key == "ollama":
+
+                # Worth a richer warning than the other two: unlike a
+                # plain port squat, an existing listener on 11434 is
+                # commonly a native Ollama install (this exact scenario
+                # is real, not hypothetical - found on the machine this
+                # project develops on, a systemd-managed install with a
+                # real 4.9GB model already downloaded). That native
+                # store lives under /usr/share/ollama/.ollama, owned and
+                # locked down (mode 0700) by the dedicated "ollama"
+                # system user - not something this container can safely
+                # reuse without either loosening those permissions or
+                # running the container as that system UID, so Anvil
+                # doesn't attempt to share it. The honest trade-off is
+                # surfaced here instead of hidden: stop the native
+                # service first to free the port and let this container
+                # own it (models will download again into this stack's
+                # own data/ollama), or leave it running and expect this
+                # container's Ollama to fail to bind.
+                warnings.append(
+                    "Port 11434 is already in use, commonly a sign of an existing "
+                    "native Ollama install (check with: systemctl status ollama) - this "
+                    "stack's ollama container will fail to bind that port until it's "
+                    "freed. A native install's models can't be safely reused here (its "
+                    "storage is typically locked down to a dedicated system user), so "
+                    "stopping the native service (sudo systemctl stop ollama) means this "
+                    "container will re-download any models you already have."
+                )
+
+            else:
+
+                warnings.append(
+                    f"Port {port} is already in use by something else on this host - "
+                    f"the {key} container will fail to bind it until that's freed."
+                )
 
     return {
         "success": True,

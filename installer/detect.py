@@ -22,6 +22,7 @@ import json
 import platform
 import re
 import shutil
+import socket
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -298,6 +299,25 @@ def detect_disk(path: str) -> dict:
         return {"disk_free_gb": 0.0, "disk_path_checked": path}
 
     return {"disk_free_gb": round(free_bytes / (1024 ** 3), 2), "disk_path_checked": path}
+
+
+def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """
+    A real functional check - attempts an actual TCP connect rather
+    than inspecting /proc or shelling out to ss/lsof, so it works the
+    same regardless of what's listening (a native systemd service, a
+    stray container, anything). Never raises: any socket-level error
+    is treated as "can't confirm it's in use," not "in use."
+    """
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+
+        sock.settimeout(1)
+
+        try:
+            return sock.connect_ex((host, port)) == 0
+        except OSError:
+            return False
 
 
 def detect_docker() -> dict:
