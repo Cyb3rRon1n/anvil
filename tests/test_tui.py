@@ -143,13 +143,13 @@ async def test_config_screen_comfyui_visible_at_heavy_tier_amd():
         await ctx.__aexit__(None, None, None)
 
 
-async def test_config_screen_comfyui_hidden_at_heavy_tier_intel():
+async def test_config_screen_comfyui_visible_at_heavy_tier_intel():
 
     info = make_system_info(gpus=[GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)])
     app, pilot, ctx = await _launch_at_config_screen(info)
 
     try:
-        assert app.screen.query_one("#comfyui-check", Checkbox).display is False
+        assert app.screen.query_one("#comfyui-check", Checkbox).display is True
     finally:
         await ctx.__aexit__(None, None, None)
 

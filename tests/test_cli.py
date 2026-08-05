@@ -135,10 +135,11 @@ def test_non_interactive_heavy_amd_defaults_comfyui_on(tmp_path):
     assert config.enabled_optional == {"comfyui"}
 
 
-def test_non_interactive_heavy_intel_defaults_comfyui_off(tmp_path):
+def test_non_interactive_heavy_intel_defaults_comfyui_on(tmp_path):
     """
-    Intel Arc has no real, verified ComfyUI image yet - unlike NVIDIA/
-    AMD, this must not default to requesting something unsupported.
+    Intel Arc has a real, verified ComfyUI image now
+    (yanwk/comfyui-boot:xpu) - a fresh non-interactive run defaults it
+    on, matching NVIDIA/AMD's own default-on behavior.
     """
 
     info = make_system_info(gpus=[GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)])
@@ -154,7 +155,7 @@ def test_non_interactive_heavy_intel_defaults_comfyui_off(tmp_path):
     assert result.exit_code == 0, result.output
 
     config = mock_write_stack.call_args[0][0]
-    assert config.enabled_optional == set()
+    assert config.enabled_optional == {"comfyui"}
 
 
 def test_non_interactive_rerun_reuses_previous_tier_and_comfyui_choice(tmp_path):

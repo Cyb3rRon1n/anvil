@@ -145,10 +145,11 @@ def run_install(
 
     if chosen_tier_name == "heavy":
 
-        # NVIDIA and AMD both have a real, verified ComfyUI image now
-        # (mmartial/comfyui-nvidia-docker, corundex/comfyui-rocm) -
-        # Intel Arc doesn't yet, see CLAUDE.md's still-open questions.
-        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
+        # All three real vendors detect.py can detect (NVIDIA, AMD,
+        # Intel Arc) have a real, verified ComfyUI image now -
+        # mmartial/comfyui-nvidia-docker, corundex/comfyui-rocm,
+        # yanwk/comfyui-boot:xpu respectively.
+        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd", "intel")
 
         # Never defaults to "wanted" on hardware that can't actually
         # render it - a real bug caught by testing: an earlier version

@@ -117,12 +117,14 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     if heavy_wants_comfyui:
 
+        # Defensive, not expected to fire in practice as of this writing
+        # - all three vendors detect.py can ever detect (nvidia/amd/intel)
+        # have a real, verified ComfyUI image now. Kept for the case
+        # config.gpu is None (requested without a GPU at all) or a future
+        # vendor gets detection support before an image is researched.
         warnings.append(
-            "ComfyUI was requested but skipped: the only real, verified images for it "
-            "(mmartial/comfyui-nvidia-docker for NVIDIA, corundex/comfyui-rocm for AMD) "
-            f"support NVIDIA and AMD only, and this host's detected GPU is "
-            f"{config.gpu.vendor if config.gpu else 'none'}. An Intel Arc-compatible image "
-            "hasn't been researched yet - see CLAUDE.md's still-open questions."
+            "ComfyUI was requested but skipped: no real, verified ComfyUI image "
+            f"supports this host's detected GPU ({config.gpu.vendor if config.gpu else 'none'})."
         )
 
     if config.gpu and config.gpu.vendor == "nvidia" and enabled:

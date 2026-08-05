@@ -49,7 +49,7 @@ _MEDIUM_SERVICES = list(_LIGHT_SERVICES)
 _HEAVY_SERVICES = _MEDIUM_SERVICES + [
     ServiceDefinition(
         "comfyui", "ComfyUI (image generation)",
-        optional=True, vendor_restrictions=frozenset({"nvidia", "amd"})
+        optional=True, vendor_restrictions=frozenset({"nvidia", "amd", "intel"})
     ),
 ]
 

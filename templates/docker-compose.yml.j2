@@ -83,4 +83,21 @@ services:
     ports:
       - "8188:8188"
     restart: unless-stopped
+{% elif 'comfyui' in enabled and gpu_vendor == 'intel' %}
+  comfyui:
+    image: yanwk/comfyui-boot:xpu
+    container_name: comfyui
+    devices:
+      - /dev/dri
+    ipc: host
+    security_opt:
+      - label=disable
+    volumes:
+      - ./data/comfyui/models:/root/ComfyUI/models
+      - ./data/comfyui/input:/root/ComfyUI/input
+      - ./data/comfyui/output:/root/ComfyUI/output
+      - ./data/comfyui/user:/root/ComfyUI/user
+    ports:
+      - "8188:8188"
+    restart: unless-stopped
 {% endif %}

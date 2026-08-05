@@ -73,16 +73,29 @@ def test_enabled_service_keys_heavy_amd_includes_comfyui_when_requested():
     }
 
 
-def test_enabled_service_keys_heavy_intel_excludes_comfyui_even_when_requested():
+def test_enabled_service_keys_heavy_intel_includes_comfyui_when_requested():
     """
-    Real constraint, not a bug: no Intel Arc-compatible ComfyUI image
-    has been researched yet, so this must not silently claim ComfyUI
-    on hardware it can't actually run on.
+    Intel Arc has a real, verified ComfyUI image too now
+    (yanwk/comfyui-boot:xpu) - confirmed real and published via
+    `docker manifest inspect`, not assumed. All three real vendors
+    detect.py can detect are covered.
     """
 
     gpu = GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)
 
-    assert enabled_service_keys(TIERS["heavy"], gpu, {"comfyui"}) == {"ollama", "open-webui"}
+    assert enabled_service_keys(TIERS["heavy"], gpu, {"comfyui"}) == {
+        "ollama", "open-webui", "comfyui"
+    }
+
+
+def test_enabled_service_keys_no_gpu_excludes_comfyui_even_when_requested():
+    """
+    A real, if currently only theoretical, fallback: comfyui can't
+    render without a GPU at all, even though normal recommend_tier()
+    flow would never reach Heavy tier with gpu=None in the first place.
+    """
+
+    assert enabled_service_keys(TIERS["heavy"], None, {"comfyui"}) == {"ollama", "open-webui"}
 
 
 def test_enabled_service_keys_heavy_without_requesting_comfyui_omits_it():

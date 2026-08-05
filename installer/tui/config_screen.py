@@ -34,7 +34,7 @@ class ConfigScreen(Screen):
             default_pgid = previous["pgid"]
 
         gpu = self.app.gpu
-        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
+        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd", "intel")
 
         comfyui_default = (
             "comfyui" in previous["enabled_optional"] if previous else comfyui_supported
@@ -84,7 +84,7 @@ class ConfigScreen(Screen):
     def _update_comfyui_visibility(self, tier_id: str) -> None:
 
         gpu = self.app.gpu
-        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
+        comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd", "intel")
         self.query_one("#comfyui-check", Checkbox).display = tier_id == "heavy" and comfyui_supported
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
