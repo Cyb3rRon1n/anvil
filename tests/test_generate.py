@@ -225,6 +225,130 @@ def test_write_stack_no_gpu_produces_no_toolkit_warning(tmp_path):
     assert result["warnings"] == []
 
 
+def test_write_stack_heavy_nvidia_with_invokeai_requested_includes_it(tmp_path):
+
+    config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288),
+        enabled_optional={"invokeai"}
+    )
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "invokeai:" in compose
+    assert "ghcr.io/invoke-ai/invokeai:latest" in compose
+    assert "CONTAINER_UID=1000" in compose
+    assert not any("AMD Container Toolkit" in warning for warning in result["warnings"])
+
+
+def test_write_stack_heavy_amd_with_invokeai_requested_renders_rocm_image_and_runtime(tmp_path):
+    """
+    A real, InvokeAI-specific mechanism, confirmed against InvokeAI's
+    own real docker-compose.yml (fetched directly, not summarized):
+    `runtime: amd` + AMD_VISIBLE_DEVICES, not the plain /dev/kfd +
+    /dev/dri passthrough Ollama/ComfyUI's AMD blocks use.
+    """
+
+    with patch("installer.generate.detect_render_group_gid", return_value=44):
+
+        config = make_config(
+            "heavy",
+            gpu=GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480),
+            enabled_optional={"invokeai"}
+        )
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "invokeai:" in compose
+    assert "ghcr.io/invoke-ai/invokeai:main-rocm" in compose
+    assert "runtime: amd" in compose
+    assert "AMD_VISIBLE_DEVICES=all" in compose
+    assert 'RENDER_GROUP_ID=44' in compose
+    assert not any("was requested but skipped" in warning for warning in result["warnings"])
+    assert any(
+        "AMD Container Toolkit" in warning and "instinct.docs.amd.com" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_heavy_nvidia_never_warns_about_amd_container_toolkit(tmp_path):
+
+    config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288),
+        enabled_optional={"invokeai"}
+    )
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("AMD Container Toolkit" in warning for warning in result["warnings"])
+
+
+def test_write_stack_heavy_amd_without_invokeai_never_warns_about_amd_container_toolkit(tmp_path):
+
+    with patch("installer.generate.detect_render_group_gid", return_value=44):
+
+        config = make_config(
+            "heavy",
+            gpu=GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480),
+            enabled_optional={"comfyui"}
+        )
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("AMD Container Toolkit" in warning for warning in result["warnings"])
+
+
+def test_write_stack_heavy_intel_with_invokeai_requested_warns_and_omits(tmp_path):
+    """
+    Unlike ComfyUI, InvokeAI has no official Intel Arc image at all -
+    a real, currently-live gap, not a defensive/unreachable case.
+    """
+
+    config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384),
+        enabled_optional={"invokeai"}
+    )
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "invokeai:" not in compose
+    assert any(
+        "InvokeAI was requested but skipped" in warning and "Intel Arc has none" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_write_stack_heavy_no_gpu_with_invokeai_requested_warns_and_omits(tmp_path):
+
+    config = make_config("heavy", gpu=None, enabled_optional={"invokeai"})
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "invokeai:" not in compose
+    assert any("InvokeAI was requested but skipped" in warning for warning in result["warnings"])
+
+
+def test_write_stack_invokeai_port_in_use_warns_generically(tmp_path):
+
+    config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288),
+        enabled_optional={"invokeai"}
+    )
+
+    with patch("installer.generate.port_in_use", side_effect=lambda port: port == 9090):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any(
+        "Port 9090" in warning and "invokeai container will fail to bind" in warning
+        for warning in result["warnings"]
+    )
+
+
 def test_write_stack_creates_data_directories_only_for_enabled_services(tmp_path):
 
     config = make_config("medium", gpu=GpuInfo(vendor="nvidia", name="fake", vram_total_mb=8192))
@@ -233,6 +357,7 @@ def test_write_stack_creates_data_directories_only_for_enabled_services(tmp_path
     assert (tmp_path / "stack" / "data" / "ollama").is_dir()
     assert (tmp_path / "stack" / "data" / "open-webui").is_dir()
     assert not (tmp_path / "stack" / "data" / "comfyui").exists()
+    assert not (tmp_path / "stack" / "data" / "invokeai").exists()
 
 
 def test_save_and_load_previous_state_round_trips(tmp_path):

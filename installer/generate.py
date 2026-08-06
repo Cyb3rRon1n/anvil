@@ -27,7 +27,7 @@ STATE_FILENAME = ".anvil-state.json"
 # mirrors the hardcoded "ports:" values in docker-compose.yml.j2,
 # same convention as the vendor-specific knowledge already hardcoded
 # below for the NVIDIA Container Toolkit warning.
-SERVICE_PORTS = {"ollama": 11434, "open-webui": 3000, "comfyui": 8188}
+SERVICE_PORTS = {"ollama": 11434, "open-webui": 3000, "comfyui": 8188, "invokeai": 9090}
 
 # The dashboard isn't a tiers.py ServiceDefinition (not user-choosable,
 # not tier-gated) - it's always rendered, so its port gets its own
@@ -153,6 +153,26 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             f"supports this host's detected GPU ({config.gpu.vendor if config.gpu else 'none'})."
         )
 
+    heavy_wants_invokeai = (
+        config.tier.name == "heavy"
+        and "invokeai" in config.enabled_optional
+        and "invokeai" not in enabled
+    )
+
+    if heavy_wants_invokeai:
+
+        # A real, currently-live gap, not purely defensive the way the
+        # ComfyUI version above now is: InvokeAI's official image has no
+        # Intel Arc support at all (confirmed - only a non-Docker
+        # community workaround exists, invoke-ai/InvokeAI itself never
+        # shipped an XPU build), so a Heavy-tier Intel host requesting it
+        # hits this today, not just in a hypothetical future-vendor case.
+        warnings.append(
+            "InvokeAI was requested but skipped: no real InvokeAI image supports this "
+            f"host's detected GPU ({config.gpu.vendor if config.gpu else 'none'}) - only "
+            "NVIDIA and AMD have official images as of this writing, Intel Arc has none."
+        )
+
     if config.gpu and config.gpu.vendor == "nvidia" and enabled:
 
         # A real, separate gap from GPU presence itself: nvidia-smi
@@ -201,6 +221,27 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "    docker compose exec comfyui pip install -r "
             "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/requirements.txt\n"
             "    docker compose restart comfyui"
+        )
+
+    if config.gpu and config.gpu.vendor == "amd" and "invokeai" in enabled:
+
+        # A real, InvokeAI-specific gap, not shared with Ollama/ComfyUI's
+        # AMD blocks: InvokeAI's own official compose file (confirmed by
+        # fetching it directly, not an AI-summarized version - a prior
+        # summarized fetch of Decluttarr's config got a similar detail
+        # wrong, see CLAUDE.md) uses `runtime: amd` + AMD_VISIBLE_DEVICES,
+        # AMD's own separate Container Toolkit-registered Docker runtime -
+        # not the plain /dev/kfd + /dev/dri device passthrough Ollama and
+        # ComfyUI's AMD images use here, which needs no special runtime
+        # registration at all. Detecting the GPU (this project's
+        # sysfs/rocm-smi-based detect_amd_gpus()) proves nothing about
+        # whether that separate runtime is registered with Docker.
+        warnings.append(
+            "InvokeAI's AMD image needs the AMD Container Toolkit registered with "
+            "Docker on this host (a separate \"amd\" runtime - not the plain device "
+            "passthrough Ollama/ComfyUI use here) - Anvil doesn't install or register "
+            "it automatically. Install guide: "
+            "https://instinct.docs.amd.com/projects/container-toolkit/en/latest/"
         )
 
     if "open-webui" in enabled and "comfyui" in enabled:

@@ -60,6 +60,10 @@ _HEAVY_SERVICES = _MEDIUM_SERVICES + [
         "comfyui", "ComfyUI (image generation)",
         optional=True, vendor_restrictions=frozenset({"nvidia", "amd", "intel"})
     ),
+    ServiceDefinition(
+        "invokeai", "InvokeAI (turnkey image generation)",
+        optional=True, vendor_restrictions=frozenset({"nvidia", "amd"})
+    ),
 ]
 
 TIERS: dict[str, TierDefinition] = {

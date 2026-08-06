@@ -101,6 +101,43 @@ services:
       - "8188:8188"
     restart: unless-stopped
 {% endif %}
+{% if 'invokeai' in enabled and gpu_vendor == 'nvidia' %}
+  invokeai:
+    image: ghcr.io/invoke-ai/invokeai:latest
+    container_name: invokeai
+    environment:
+      - INVOKEAI_ROOT=/invokeai
+      - CONTAINER_UID={{ puid }}
+    volumes:
+      - ./data/invokeai:/invokeai
+    ports:
+      - "9090:9090"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+{% elif 'invokeai' in enabled and gpu_vendor == 'amd' %}
+  invokeai:
+    image: ghcr.io/invoke-ai/invokeai:main-rocm
+    container_name: invokeai
+    runtime: amd
+    environment:
+      - INVOKEAI_ROOT=/invokeai
+      - CONTAINER_UID={{ puid }}
+      - AMD_VISIBLE_DEVICES=all
+{% if render_gid %}
+      - RENDER_GROUP_ID={{ render_gid }}
+{% endif %}
+    volumes:
+      - ./data/invokeai:/invokeai
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+{% endif %}
   dashboard:
     image: nginx:alpine
     container_name: dashboard

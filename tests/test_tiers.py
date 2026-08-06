@@ -105,6 +105,63 @@ def test_enabled_service_keys_heavy_without_requesting_comfyui_omits_it():
     assert enabled_service_keys(TIERS["heavy"], gpu, set()) == {"ollama", "open-webui"}
 
 
+def test_enabled_service_keys_light_and_medium_never_include_invokeai():
+
+    gpu = GpuInfo(vendor="nvidia", name="fake", vram_total_mb=8192)
+
+    assert "invokeai" not in enabled_service_keys(TIERS["light"], gpu, {"invokeai"})
+    assert "invokeai" not in enabled_service_keys(TIERS["medium"], gpu, {"invokeai"})
+
+
+def test_enabled_service_keys_heavy_nvidia_includes_invokeai_when_requested():
+
+    gpu = GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)
+
+    assert enabled_service_keys(TIERS["heavy"], gpu, {"invokeai"}) == {
+        "ollama", "open-webui", "invokeai"
+    }
+
+
+def test_enabled_service_keys_heavy_amd_includes_invokeai_when_requested():
+    """
+    InvokeAI's own official docker/ directory ships a real, published
+    AMD ROCm image (ghcr.io/invoke-ai/invokeai:main-rocm) - confirmed
+    via `docker manifest inspect` and the real docker-compose.yml in
+    invoke-ai/InvokeAI, not assumed from a summarized doc fetch.
+    """
+
+    gpu = GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480)
+
+    assert enabled_service_keys(TIERS["heavy"], gpu, {"invokeai"}) == {
+        "ollama", "open-webui", "invokeai"
+    }
+
+
+def test_enabled_service_keys_heavy_intel_excludes_invokeai_even_when_requested():
+    """
+    Unlike ComfyUI (which now has a real image for all three detectable
+    vendors), InvokeAI has no official Intel Arc image at all - only a
+    non-Docker community workaround exists. A real, currently-live gap,
+    not a future-vendor hypothetical.
+    """
+
+    gpu = GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)
+
+    assert enabled_service_keys(TIERS["heavy"], gpu, {"invokeai"}) == {"ollama", "open-webui"}
+
+
+def test_enabled_service_keys_no_gpu_excludes_invokeai_even_when_requested():
+
+    assert enabled_service_keys(TIERS["heavy"], None, {"invokeai"}) == {"ollama", "open-webui"}
+
+
+def test_enabled_service_keys_heavy_without_requesting_invokeai_omits_it():
+
+    gpu = GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)
+
+    assert enabled_service_keys(TIERS["heavy"], gpu, set()) == {"ollama", "open-webui"}
+
+
 def test_every_tier_has_a_real_nonempty_capability_note():
 
     for tier in TIERS.values():

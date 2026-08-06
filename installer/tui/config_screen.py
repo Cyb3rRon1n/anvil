@@ -45,6 +45,12 @@ class ConfigScreen(Screen):
             else "stack/data/comfyui/models"
         )
 
+        invokeai_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
+
+        invokeai_default = (
+            "invokeai" in previous["enabled_optional"] if previous else invokeai_supported
+        ) and invokeai_supported
+
         yield Vertical(
             Static(recommendation.explanation, id="recommendation"),
             RadioSet(
@@ -69,6 +75,14 @@ class ConfigScreen(Screen):
                     "first start - Ollama pulls its own models automatically, ComfyUI does not."
                 )
             ),
+            Checkbox(
+                "Enable InvokeAI (turnkey image generation)", value=invokeai_default, id="invokeai-check",
+                tooltip=(
+                    "A simpler alternative to ComfyUI's node-based UI - model checkpoints can be "
+                    "downloaded straight from InvokeAI's own built-in Model Manager (HuggingFace "
+                    "repo IDs, curated starter models), no manual file placement needed."
+                )
+            ),
             Input(
                 value=str(default_puid), type="integer", placeholder="PUID", id="puid-input",
                 tooltip="User ID the containers run as - defaults to your own user."
@@ -86,6 +100,7 @@ class ConfigScreen(Screen):
 
     def on_mount(self) -> None:
         self._update_comfyui_visibility(self._current_tier_id())
+        self._update_invokeai_visibility(self._current_tier_id())
 
     def _current_tier_id(self) -> str:
         return self.query_one("#tier-set", RadioSet).pressed_button.id
@@ -96,8 +111,15 @@ class ConfigScreen(Screen):
         comfyui_supported = gpu is not None and gpu.vendor in ("nvidia", "amd", "intel")
         self.query_one("#comfyui-check", Checkbox).display = tier_id == "heavy" and comfyui_supported
 
+    def _update_invokeai_visibility(self, tier_id: str) -> None:
+
+        gpu = self.app.gpu
+        invokeai_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
+        self.query_one("#invokeai-check", Checkbox).display = tier_id == "heavy" and invokeai_supported
+
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._update_comfyui_visibility(event.pressed.id)
+        self._update_invokeai_visibility(event.pressed.id)
 
     def _parse_puid_pgid(self) -> tuple[int, int] | None:
 
@@ -135,6 +157,11 @@ class ConfigScreen(Screen):
 
         if comfyui_checkbox.display and comfyui_checkbox.value:
             enabled_optional.add("comfyui")
+
+        invokeai_checkbox = self.query_one("#invokeai-check", Checkbox)
+
+        if invokeai_checkbox.display and invokeai_checkbox.value:
+            enabled_optional.add("invokeai")
 
         self.app.tier_name = tier_id
         self.app.puid = puid

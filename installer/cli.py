@@ -41,6 +41,10 @@ def main(
         None, "--comfyui/--no-comfyui",
         help="Include ComfyUI (image generation) - only offered at Heavy tier on NVIDIA GPUs"
     ),
+    invokeai: bool | None = typer.Option(
+        None, "--invokeai/--no-invokeai",
+        help="Include InvokeAI (turnkey image generation) - only offered at Heavy tier on NVIDIA/AMD GPUs"
+    ),
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
@@ -56,13 +60,14 @@ def main(
         run_tui()
         return
 
-    run_install(non_interactive, yes, comfyui, puid, pgid, start)
+    run_install(non_interactive, yes, comfyui, invokeai, puid, pgid, start)
 
 
 def run_install(
     non_interactive: bool,
     yes: bool,
     comfyui: bool | None,
+    invokeai: bool | None,
     puid: int | None,
     pgid: int | None,
     start: bool | None
@@ -189,6 +194,40 @@ def run_install(
         if enable_comfyui:
             enabled_optional.add("comfyui")
 
+        # Only NVIDIA and AMD have a real, official InvokeAI image -
+        # confirmed via invoke-ai/InvokeAI's own docker/ directory.
+        # Intel Arc has none (only a non-Docker community workaround
+        # exists), a real, currently-live gap, not a future-vendor
+        # hypothetical the way ComfyUI's equivalent check above now is.
+        invokeai_supported = gpu is not None and gpu.vendor in ("nvidia", "amd")
+
+        invokeai_default = (
+            "invokeai" in previous["enabled_optional"] if previous else invokeai_supported
+        ) and invokeai_supported
+
+        if invokeai is None:
+
+            if non_interactive:
+                enable_invokeai = invokeai_default
+            elif invokeai_supported:
+
+                enable_invokeai = typer.confirm(
+                    "Enable InvokeAI (turnkey image generation)? A simpler alternative to "
+                    "ComfyUI's node-based UI - model checkpoints can be downloaded straight "
+                    "from InvokeAI's own built-in Model Manager (HuggingFace repo IDs, "
+                    "curated starter models), no manual file placement needed.",
+                    default=invokeai_default
+                )
+
+            else:
+                enable_invokeai = False
+
+        else:
+            enable_invokeai = invokeai
+
+        if enable_invokeai:
+            enabled_optional.add("invokeai")
+
     default_puid, default_pgid = default_puid_pgid()
 
     if previous:
@@ -219,6 +258,7 @@ def run_install(
     console.print(f"  GPU: {gpu.vendor.upper() if gpu else 'none'}")
     console.print(f"  PUID/PGID: {final_puid}/{final_pgid}")
     console.print(f"  ComfyUI: {'enabled' if 'comfyui' in enabled_optional else 'disabled'}")
+    console.print(f"  InvokeAI: {'enabled' if 'invokeai' in enabled_optional else 'disabled'}")
 
     compose_exists = (STACK_DIR / "docker-compose.yml").exists()
 
@@ -259,6 +299,9 @@ def run_install(
 
             if "comfyui" in config.enabled_optional:
                 console.print("  ComfyUI:      http://localhost:8188")
+
+            if "invokeai" in config.enabled_optional:
+                console.print("  InvokeAI:     http://localhost:9090")
 
         else:
             console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")

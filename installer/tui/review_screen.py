@@ -42,7 +42,8 @@ class ReviewScreen(Screen):
             f"  {tier.capability_note}\n"
             f"GPU: {gpu.vendor.upper() if gpu else 'none'}\n"
             f"PUID/PGID: {self.app.puid}/{self.app.pgid}\n"
-            f"ComfyUI: {'enabled' if 'comfyui' in self.app.enabled_optional else 'disabled'}"
+            f"ComfyUI: {'enabled' if 'comfyui' in self.app.enabled_optional else 'disabled'}\n"
+            f"InvokeAI: {'enabled' if 'invokeai' in self.app.enabled_optional else 'disabled'}"
         )
 
         yield Vertical(
@@ -131,6 +132,9 @@ class ReviewScreen(Screen):
 
             if "comfyui" in self._config.enabled_optional:
                 message += "\n  ComfyUI:      http://localhost:8188"
+
+            if "invokeai" in self._config.enabled_optional:
+                message += "\n  InvokeAI:     http://localhost:9090"
 
             self.app.exit(message=message)
 

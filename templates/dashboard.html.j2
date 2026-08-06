@@ -56,6 +56,14 @@
       </a>
     </li>
 {% endif %}
+{% if 'invokeai' in enabled %}
+    <li>
+      <a href="http://{{ host }}:9090">
+        <div class="name">InvokeAI</div>
+        <div class="desc">Turnkey image generation</div>
+      </a>
+    </li>
+{% endif %}
 {% if 'ollama' in enabled %}
     <li>
       <a href="http://{{ host }}:11434">

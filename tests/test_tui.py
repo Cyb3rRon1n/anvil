@@ -171,6 +171,53 @@ async def test_config_screen_comfyui_visible_at_heavy_tier_intel():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_config_screen_invokeai_hidden_at_medium_tier():
+
+    app, pilot, ctx = await _launch_at_config_screen(make_system_info())
+
+    try:
+        assert app.screen.query_one("#invokeai-check", Checkbox).display is False
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_config_screen_invokeai_visible_at_heavy_tier_nvidia():
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)])
+    app, pilot, ctx = await _launch_at_config_screen(info)
+
+    try:
+        assert app.screen.query_one("#invokeai-check", Checkbox).display is True
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_config_screen_invokeai_visible_at_heavy_tier_amd():
+
+    info = make_system_info(gpus=[GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480)])
+    app, pilot, ctx = await _launch_at_config_screen(info)
+
+    try:
+        assert app.screen.query_one("#invokeai-check", Checkbox).display is True
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_config_screen_invokeai_hidden_at_heavy_tier_intel():
+    """
+    Unlike ComfyUI (visible on all three vendors), InvokeAI has no
+    official Intel Arc image - the checkbox must stay hidden there.
+    """
+
+    info = make_system_info(gpus=[GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)])
+    app, pilot, ctx = await _launch_at_config_screen(info)
+
+    try:
+        assert app.screen.query_one("#invokeai-check", Checkbox).display is False
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_config_screen_invalid_puid_shows_error_and_does_not_navigate():
 
     app, pilot, ctx = await _launch_at_config_screen(make_system_info())
@@ -200,6 +247,7 @@ async def test_config_screen_continue_stores_tier_and_comfyui_choice():
         await pilot.pause()
 
         app.screen.query_one("#comfyui-check", Checkbox).value = True
+        app.screen.query_one("#invokeai-check", Checkbox).value = False
 
         await pilot.click("#continue")
         await pilot.pause()
@@ -207,6 +255,29 @@ async def test_config_screen_continue_stores_tier_and_comfyui_choice():
         assert isinstance(app.screen, ReviewScreen)
         assert app.tier_name == "heavy"
         assert app.enabled_optional == {"comfyui"}
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_config_screen_continue_stores_invokeai_choice():
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)])
+    app, pilot, ctx = await _launch_at_config_screen(info)
+
+    try:
+
+        app.screen.query_one("#heavy").value = True
+        await pilot.pause()
+
+        app.screen.query_one("#comfyui-check", Checkbox).value = False
+        app.screen.query_one("#invokeai-check", Checkbox).value = True
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert isinstance(app.screen, ReviewScreen)
+        assert app.enabled_optional == {"invokeai"}
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -227,15 +298,22 @@ async def test_config_screen_back_returns_to_welcome_screen():
         await ctx.__aexit__(None, None, None)
 
 
-async def _launch_at_review_screen(info: SystemInfo, tier_id: str = "medium", enable_comfyui: bool = False):
+async def _launch_at_review_screen(
+    info: SystemInfo, tier_id: str = "medium", enable_comfyui: bool = False, enable_invokeai: bool = False
+):
 
     app, pilot, ctx = await _launch_at_config_screen(info)
 
     app.screen.query_one(f"#{tier_id}").value = True
     await pilot.pause()
 
-    if enable_comfyui:
-        app.screen.query_one("#comfyui-check", Checkbox).value = True
+    if tier_id == "heavy":
+        # Both checkboxes default on for supported hardware (see
+        # config_screen.py) - set explicitly rather than relying on
+        # that default, so callers get exactly the combination asked
+        # for regardless of which vendors info's GPU supports.
+        app.screen.query_one("#comfyui-check", Checkbox).value = enable_comfyui
+        app.screen.query_one("#invokeai-check", Checkbox).value = enable_invokeai
 
     await pilot.click("#continue")
     await pilot.pause()

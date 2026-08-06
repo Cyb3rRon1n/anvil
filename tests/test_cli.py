@@ -109,7 +109,10 @@ def test_non_interactive_heavy_nvidia_with_comfyui_flag_enables_it(tmp_path):
 
     config = mock_write_stack.call_args[0][0]
     assert config.tier.name == "heavy"
-    assert config.enabled_optional == {"comfyui"}
+    # invokeai is also NVIDIA-supported and real like comfyui, so a
+    # fresh non-interactive run defaults it on too - not requested via
+    # flag here, just the same "supported hardware defaults on" rule.
+    assert config.enabled_optional == {"comfyui", "invokeai"}
 
 
 def test_non_interactive_heavy_amd_defaults_comfyui_on(tmp_path):
@@ -132,7 +135,8 @@ def test_non_interactive_heavy_amd_defaults_comfyui_on(tmp_path):
     assert result.exit_code == 0, result.output
 
     config = mock_write_stack.call_args[0][0]
-    assert config.enabled_optional == {"comfyui"}
+    # invokeai also has a real, official AMD image - defaults on too.
+    assert config.enabled_optional == {"comfyui", "invokeai"}
 
 
 def test_non_interactive_heavy_intel_defaults_comfyui_on(tmp_path):
@@ -151,6 +155,50 @@ def test_non_interactive_heavy_intel_defaults_comfyui_on(tmp_path):
     ) as mock_write_stack:
 
         result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional == {"comfyui"}
+
+
+def test_non_interactive_heavy_intel_never_enables_invokeai(tmp_path):
+    """
+    Unlike ComfyUI, InvokeAI has no official Intel Arc image - a real,
+    currently-live gap. A fresh non-interactive run on Intel Arc must
+    never default it on, unlike NVIDIA/AMD above.
+    """
+
+    info = make_system_info(gpus=[GpuInfo(vendor="intel", name="Arc A770", vram_total_mb=16384)])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional == {"comfyui"}
+    assert "invokeai" not in config.enabled_optional
+
+
+def test_non_interactive_heavy_amd_with_no_invokeai_flag_disables_it(tmp_path):
+
+    info = make_system_info(gpus=[GpuInfo(vendor="amd", name="RX 7900", vram_total_mb=20480)])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app, ["--non-interactive", "--yes", "--no-start", "--no-invokeai"]
+        )
 
     assert result.exit_code == 0, result.output
 
