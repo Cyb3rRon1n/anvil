@@ -64,6 +64,7 @@ class SystemInfo:
     architecture: str
     os_id: str | None
     os_pretty_name: str | None
+    os_is_atomic: bool
 
 
 def _run(command: list[str], timeout: int = 10) -> subprocess.CompletedProcess | None:
@@ -357,6 +358,32 @@ def detect_docker() -> dict:
     }
 
 
+def detect_os_is_atomic() -> bool:
+    """
+    True on an rpm-ostree-based image (Fedora Silverblue/Kinoite,
+    Bazzite, and other Universal Blue derivatives, CoreOS) - a real
+    functional signal, not a name guess: /run/ostree-booted is written
+    by ostree itself at boot only when the running root is an ostree
+    deployment (confirmed against a real Bazzite host while building
+    this - present there, absent on a normal mutable Fedora). Docker
+    can't be `dnf install`ed on these systems the way install_plan_for's
+    existing DOCKER_SCRIPT_DISTROS assume - the base image is read-only,
+    packages are layered via `rpm-ostree install` instead, and that
+    layering only takes effect after a reboot. shutil.which("rpm-ostree")
+    is kept as a fallback for the (currently unobserved) case where the
+    marker file itself is missing but the tooling still is - never the
+    primary signal, since a tool being on PATH doesn't confirm the
+    running root actually is one (the same presence-vs-function
+    distinction this module's own docstring already applies to GPU
+    detection).
+    """
+
+    if Path("/run/ostree-booted").exists():
+        return True
+
+    return shutil.which("rpm-ostree") is not None
+
+
 def detect_os() -> dict:
 
     os_id = None
@@ -387,11 +414,24 @@ def detect_os() -> dict:
     return {
         "architecture": platform.machine(),
         "os_id": os_id,
-        "os_pretty_name": os_pretty_name
+        "os_pretty_name": os_pretty_name,
+        "os_is_atomic": detect_os_is_atomic()
     }
 
 
-def detect_system(disk_path: str = "/") -> SystemInfo:
+def detect_system(disk_path: str = ".") -> SystemInfo:
+    """
+    disk_path defaults to the current directory, not "/" - a real bug
+    found live against msi-laptop (an atomic/ostree host): "/" there is
+    a tiny, nearly-full composefs root (real free space ~0GB), while
+    the actual filesystem `stack/` (GenerationConfig.STACK_DIR, always
+    relative to cwd) will be written to - typically under the user's
+    home - had hundreds of GB free. Checking "/" reported a misleading
+    "Disk free: 0.0GB" right next to "model checkpoints commonly run
+    4-140GB+ each," even though nothing was actually wrong. "." is
+    correct on every host, atomic or not - it's the one directory this
+    project's own writes are guaranteed to land under.
+    """
 
     return SystemInfo(
         **detect_cpu(),

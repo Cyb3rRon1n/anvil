@@ -1,11 +1,10 @@
-import subprocess
-
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, LoadingIndicator, Static
 
+from installer.docker_setup import run_docker_command
 from installer.generate import GenerationConfig, write_stack
 from installer.tiers import TIERS
 
@@ -115,7 +114,10 @@ class ReviewScreen(Screen):
     @work(thread=True)
     def _run_start(self) -> None:
 
-        proc = subprocess.run(["docker", "compose", "-f", self._compose_path, "up", "-d"])
+        proc = run_docker_command(
+            ["docker", "compose", "-f", self._compose_path, "up", "-d"],
+            use_group_workaround=self.app.group_just_added
+        )
 
         self.app.call_from_thread(self._start_complete, proc.returncode)
 

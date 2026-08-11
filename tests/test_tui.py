@@ -5,8 +5,8 @@ from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Stat
 from installer.detect import GpuInfo, SystemInfo
 from installer.tui.app import AnvilApp
 from installer.tui.config_screen import ConfigScreen
+from installer.tui.docker_screen import DockerReadyScreen
 from installer.tui.review_screen import ReviewScreen
-from installer.tui.welcome_screen import WelcomeScreen
 
 
 def make_system_info(**overrides) -> SystemInfo:
@@ -24,7 +24,8 @@ def make_system_info(**overrides) -> SystemInfo:
         docker_compose_v2=True,
         architecture="x86_64",
         os_id="fedora",
-        os_pretty_name="Fedora Linux 44"
+        os_pretty_name="Fedora Linux 44",
+        os_is_atomic=False
     )
 
     base.update(overrides)
@@ -50,10 +51,48 @@ async def _launch_at_welcome_screen(info: SystemInfo, previous: dict | None = No
     return app, pilot, ctx
 
 
+async def _launch_at_docker_screen(info: SystemInfo):
+    """
+    Shared setup landing directly on DockerReadyScreen with a given
+    SystemInfo - mirrors Vulcan's own identical helper. AnvilApp's
+    on_mount() always pushes WelcomeScreen first, whose own background
+    detection worker would otherwise race with - and silently clobber
+    - the system_info set here, so WelcomeScreen's real detect_system()
+    is mocked and awaited to completion before DockerReadyScreen is
+    pushed and the fake info substituted in.
+    """
+
+    with patch(
+        "installer.tui.welcome_screen.detect_system", return_value=make_system_info()
+    ), patch(
+        "installer.tui.welcome_screen.load_previous_state", return_value=None
+    ):
+
+        app = AnvilApp()
+        ctx = app.run_test()
+        pilot = await ctx.__aenter__()
+
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    app.system_info = info
+    app.gpu = info.gpus[0] if info.gpus else None
+    app.push_screen(DockerReadyScreen())
+    await pilot.pause()
+
+    return app, pilot, ctx
+
+
 async def _launch_at_config_screen(info: SystemInfo, previous: dict | None = None):
 
     app, pilot, ctx = await _launch_at_welcome_screen(info, previous)
 
+    await pilot.click("#continue")
+    await pilot.pause()
+
+    # DockerReadyScreen now sits between Welcome and Config - docker
+    # is ready by default in make_system_info(), so this just clicks
+    # through it the same way a real ready host would.
     await pilot.click("#continue")
     await pilot.pause()
 
@@ -87,6 +126,21 @@ async def test_welcome_screen_with_gpu_enables_continue_and_sets_app_gpu():
         await ctx.__aexit__(None, None, None)
 
 
+async def test_continue_from_welcome_navigates_to_docker_screen():
+
+    app, pilot, ctx = await _launch_at_welcome_screen(make_system_info())
+
+    try:
+
+        await pilot.click("#continue")
+        await pilot.pause()
+
+        assert isinstance(app.screen, DockerReadyScreen)
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
 async def test_continue_navigates_to_config_screen():
 
     app, pilot, ctx = await _launch_at_config_screen(make_system_info())
@@ -95,6 +149,237 @@ async def test_continue_navigates_to_config_screen():
         assert isinstance(app.screen, ConfigScreen)
     finally:
         await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_already_ready():
+
+    app, pilot, ctx = await _launch_at_docker_screen(make_system_info())
+
+    try:
+
+        status = app.screen.query_one("#docker-status", Static).content
+        assert status == "Docker is ready."
+        assert app.screen.query_one("#continue", Button).disabled is False
+        assert app.screen.query_one("#action", Button).display is False
+
+    finally:
+        await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_not_installed_shows_install_button():
+
+    info = make_system_info(
+        docker_installed=False, docker_running=False, docker_compose_v2=False
+    )
+
+    with patch(
+        "installer.tui.docker_screen.install_plan_for",
+        return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
+    ):
+
+        app, pilot, ctx = await _launch_at_docker_screen(info)
+
+        try:
+
+            action = app.screen.query_one("#action", Button)
+            assert action.display is True
+            assert action.label.plain == "Install Docker"
+            assert app.screen.query_one("#continue", Button).disabled is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_unsupported_distro_shows_no_action():
+
+    info = make_system_info(
+        docker_installed=False, docker_running=False, docker_compose_v2=False,
+        os_id="gentoo"
+    )
+
+    with patch("installer.tui.docker_screen.install_plan_for", return_value=None):
+
+        app, pilot, ctx = await _launch_at_docker_screen(info)
+
+        try:
+
+            status = app.screen.query_one("#docker-status", Static).content
+            assert "No known automatic install method" in status
+            assert app.screen.query_one("#action", Button).display is False
+            assert app.screen.query_one("#continue", Button).disabled is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_install_button_runs_full_install_sequence():
+
+    info = make_system_info(
+        docker_installed=False, docker_running=False, docker_compose_v2=False
+    )
+
+    ready_state = {
+        "docker_installed": True, "docker_running": True, "docker_compose_v2": True
+    }
+
+    with patch(
+        "installer.tui.docker_screen.install_plan_for",
+        return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
+    ), patch(
+        "installer.tui.docker_screen.install_docker",
+        return_value={"success": True, "error": None, "method": "get.docker.com", "needs_reboot": False}
+    ) as mock_install, patch(
+        "installer.tui.docker_screen.start_docker_service"
+    ) as mock_start, patch(
+        "installer.tui.docker_screen.add_user_to_docker_group"
+    ) as mock_add_group, patch(
+        "installer.tui.docker_screen.ensure_compose_v2"
+    ) as mock_compose, patch(
+        "installer.tui.docker_screen.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False, "docker_compose_v2": True}
+    ), patch(
+        "installer.tui.docker_screen.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ) as mock_ready:
+
+        app, pilot, ctx = await _launch_at_docker_screen(info)
+
+        try:
+
+            await pilot.click("#action")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            mock_install.assert_called_once()
+            mock_start.assert_called_once()
+            mock_add_group.assert_called_once()
+            mock_compose.assert_called_once()
+            mock_ready.assert_called_once_with(use_group_workaround=True)
+
+            assert app.group_just_added is True
+            assert app.system_info.docker_installed is True
+            assert app.system_info.docker_running is True
+            assert app.system_info.docker_compose_v2 is True
+
+            status = app.screen.query_one("#docker-status", Static).content
+            assert status == "Docker is ready."
+            assert app.screen.query_one("#continue", Button).disabled is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_atomic_host_install_needs_reboot():
+    """
+    The real case this project's own history didn't cover until a real
+    Bazzite GPU host was tried over Tailscale: a successful rpm-ostree
+    layer doesn't make Docker usable yet. The screen must report a
+    reboot is needed rather than re-rendering as if ready, and must
+    not chain into starting the service/adding the group - neither is
+    possible before that reboot happens.
+    """
+
+    info = make_system_info(
+        docker_installed=False, docker_running=False, docker_compose_v2=False,
+        os_id="bazzite", os_is_atomic=True
+    )
+
+    with patch(
+        "installer.tui.docker_screen.install_plan_for",
+        return_value={
+            "method": "rpm-ostree",
+            "description": "rpm-ostree install docker-ce ... (needs a reboot)",
+            "needs_reboot": True
+        }
+    ), patch(
+        "installer.tui.docker_screen.install_docker",
+        return_value={"success": True, "error": None, "method": "rpm-ostree", "needs_reboot": True}
+    ), patch(
+        "installer.tui.docker_screen.start_docker_service"
+    ) as mock_start, patch(
+        "installer.tui.docker_screen.add_user_to_docker_group"
+    ) as mock_add_group, patch(
+        "installer.tui.docker_screen.detect_docker",
+        return_value={"docker_installed": False, "docker_running": False, "docker_compose_v2": False}
+    ):
+
+        app, pilot, ctx = await _launch_at_docker_screen(info)
+
+        try:
+
+            await pilot.click("#action")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            mock_start.assert_not_called()
+            mock_add_group.assert_not_called()
+            assert app.group_just_added is False
+
+            status = app.screen.query_one("#docker-status", Static).content
+            assert "reboot" in status.lower()
+            assert app.screen.query_one("#action", Button).display is False
+            assert app.screen.query_one("#continue", Button).disabled is True
+
+        finally:
+            await ctx.__aexit__(None, None, None)
+
+
+async def test_docker_ready_screen_not_running_only_starts_service():
+    """
+    The exact bug found live against msi-laptop: Docker installed by a
+    previous run (the atomic-OS reboot-split case) never got its user
+    added to the docker group before this fix, since group-adding only
+    happened alongside a fresh install. This branch must now also add
+    the group and route the re-check through check_docker_ready's
+    group-workaround (a plain detect_docker() call right after usermod
+    -aG would still see this process's own stale group list).
+    """
+
+    info = make_system_info(docker_running=False)
+
+    not_yet_state = {
+        "docker_installed": True, "docker_running": False, "docker_compose_v2": True
+    }
+    ready_state = {"docker_running": True, "docker_compose_v2": True}
+
+    with patch(
+        "installer.tui.docker_screen.start_docker_service"
+    ) as mock_start, patch(
+        "installer.tui.docker_screen.install_docker"
+    ) as mock_install, patch(
+        "installer.tui.docker_screen.add_user_to_docker_group"
+    ) as mock_group, patch(
+        "installer.tui.docker_screen.detect_docker", return_value=not_yet_state
+    ), patch(
+        "installer.tui.docker_screen.check_docker_ready", return_value=ready_state
+    ) as mock_ready:
+
+        app, pilot, ctx = await _launch_at_docker_screen(info)
+
+        try:
+
+            action = app.screen.query_one("#action", Button)
+            assert action.label.plain == "Start Docker service"
+
+            await pilot.click("#action")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            mock_start.assert_called_once()
+            mock_install.assert_not_called()
+            mock_group.assert_called_once()
+            mock_ready.assert_called_once_with(use_group_workaround=True)
+            assert app.group_just_added is True
+
+            status = app.screen.query_one("#docker-status", Static).content
+            assert status == "Docker is ready."
+            assert app.screen.query_one("#continue", Button).disabled is False
+
+        finally:
+            await ctx.__aexit__(None, None, None)
 
 
 async def test_config_screen_defaults_to_recommended_tier():
@@ -283,7 +568,12 @@ async def test_config_screen_continue_stores_invokeai_choice():
         await ctx.__aexit__(None, None, None)
 
 
-async def test_config_screen_back_returns_to_welcome_screen():
+async def test_config_screen_back_returns_to_docker_screen():
+    """
+    Genuine pop_screen() semantics, not a hardcoded "go to Welcome" -
+    DockerReadyScreen is what's really beneath ConfigScreen on the
+    stack now that it sits between Welcome and Config.
+    """
 
     app, pilot, ctx = await _launch_at_config_screen(make_system_info())
 
@@ -292,7 +582,7 @@ async def test_config_screen_back_returns_to_welcome_screen():
         await pilot.click("#back")
         await pilot.pause()
 
-        assert isinstance(app.screen, WelcomeScreen)
+        assert isinstance(app.screen, DockerReadyScreen)
 
     finally:
         await ctx.__aexit__(None, None, None)
@@ -394,7 +684,7 @@ async def test_review_screen_start_success_exits_with_service_urls():
             await pilot.pause()
 
         with patch(
-            "installer.tui.review_screen.subprocess.run", return_value=MagicMock(returncode=0)
+            "installer.tui.review_screen.run_docker_command", return_value=MagicMock(returncode=0)
         ) as mock_run:
 
             await pilot.click("#start")
@@ -403,7 +693,10 @@ async def test_review_screen_start_success_exits_with_service_urls():
             await pilot.pause()
 
         assert app.is_running is False
-        mock_run.assert_called_once()
+        mock_run.assert_called_once_with(
+            ["docker", "compose", "-f", "/scratch/stack/docker-compose.yml", "up", "-d"],
+            use_group_workaround=False
+        )
 
     finally:
         await ctx.__aexit__(None, None, None)

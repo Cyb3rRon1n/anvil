@@ -6,7 +6,7 @@ from textual.widgets import Button, LoadingIndicator, Static
 
 from installer.detect import SystemInfo, detect_primary_gpu, detect_system
 from installer.generate import STACK_DIR, load_previous_state
-from installer.tui.config_screen import ConfigScreen
+from installer.tui.docker_screen import DockerReadyScreen
 
 
 class WelcomeScreen(Screen):
@@ -89,4 +89,4 @@ class WelcomeScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
 
         if event.button.id == "continue":
-            self.app.push_screen(ConfigScreen())
+            self.app.push_screen(DockerReadyScreen())

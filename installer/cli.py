@@ -1,10 +1,19 @@
-import subprocess
+import getpass
 
 import typer
 from rich.console import Console
 
 from installer import __version__
-from installer.detect import detect_primary_gpu, detect_system
+from installer.detect import detect_docker, detect_primary_gpu, detect_system
+from installer.docker_setup import (
+    add_user_to_docker_group,
+    check_docker_ready,
+    ensure_compose_v2,
+    install_docker,
+    install_plan_for,
+    run_docker_command,
+    start_docker_service,
+)
 from installer.generate import (
     STACK_DIR,
     GenerationConfig,
@@ -28,8 +37,161 @@ def version():
     console.print(f"[bold red]Anvil[/bold red] version {__version__}")
 
 
-def run_docker_command(args: list[str]):
-    return subprocess.run(args)
+def _ensure_docker_ready(info, non_interactive: bool, yes: bool) -> tuple:
+    """
+    Mirrors Vulcan's own _ensure_docker_ready()/DockerReadyScreen shape:
+    detect, then offer to fix each of the three real readiness gaps
+    (not installed / not running / no compose v2) behind a confirm,
+    rather than just printing a link and exiting - the gap a real run
+    against a real Bazzite (atomic OS) GPU host exposed directly.
+    Returns (info, group_just_added) - group_just_added tells the
+    caller whether the final `docker compose up` needs the sg-based
+    group-refresh workaround (see run_docker_command) because this
+    same run just added the user to the docker group.
+    """
+
+    group_just_added = False
+
+    if info.docker_installed and info.docker_running and info.docker_compose_v2:
+        console.print("[green]Docker is ready.[/green]")
+        return info, group_just_added
+
+    if not info.docker_installed:
+
+        plan = install_plan_for(info.os_id, info.os_is_atomic)
+
+        if plan is None:
+
+            console.print(
+                f"[red]No known automatic install method for '{info.os_id}'. "
+                "Install Docker manually: https://docs.docker.com/engine/install/[/red]"
+            )
+            raise typer.Exit(code=1)
+
+        console.print(f"Docker isn't installed. Anvil can install it via: {plan['description']}")
+
+        proceed = yes if non_interactive else typer.confirm("Install Docker now?", default=True)
+
+        if not proceed:
+            console.print("[red]Docker is required. Install it manually and re-run.[/red]")
+            raise typer.Exit(code=1)
+
+        result = install_docker(info.os_id, info.os_is_atomic)
+
+        if not result["success"]:
+            console.print(f"[red]Docker install failed: {result['error']}[/red]")
+            raise typer.Exit(code=1)
+
+        if result["needs_reboot"]:
+
+            console.print(
+                "[yellow]Docker was layered onto this system via rpm-ostree (this is an "
+                "atomic/immutable OS - Bazzite, Silverblue, Kinoite, or similar). That "
+                "only takes effect after a reboot.[/yellow]\n\n"
+                "Reboot this machine now, then re-run `anvil` - it will detect Docker is "
+                "installed and pick up from there (starting the service, adding your "
+                "user to the docker group):\n"
+                "  sudo systemctl reboot"
+            )
+            raise typer.Exit(code=0)
+
+        start_docker_service()
+
+        group_result = add_user_to_docker_group(getpass.getuser())
+
+        if not group_result["success"]:
+            console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
+            raise typer.Exit(code=1)
+
+        ensure_compose_v2(info.os_id)
+        group_just_added = True
+
+        console.print(
+            "[yellow]Docker was just installed and your user was added to the docker "
+            "group - if starting the stack below fails with a permission error, log out "
+            "and back in and re-run anvil.[/yellow]"
+        )
+
+    elif not info.docker_running:
+
+        console.print("Docker is installed but not running.")
+
+        proceed = yes if non_interactive else typer.confirm(
+            "Start the Docker service now?", default=True
+        )
+
+        if not proceed:
+            console.print("[red]Docker must be running. Start it manually and re-run.[/red]")
+            raise typer.Exit(code=1)
+
+        result = start_docker_service()
+
+        if not result["success"]:
+            console.print(f"[red]Failed to start Docker: {result['error']}[/red]")
+            raise typer.Exit(code=1)
+
+        # Real gap found live against msi-laptop: Docker installed by
+        # a *previous* run (the atomic-OS reboot-split case) never got
+        # its user added to the docker group, since that only happened
+        # alongside a fresh install above. The daemon starting cleanly
+        # doesn't mean this user can reach it - /var/run/docker.sock is
+        # root:docker, confirmed for real. add_user_to_docker_group()
+        # is safe to call even if the user already is a member.
+        group_result = add_user_to_docker_group(getpass.getuser())
+
+        if not group_result["success"]:
+            console.print(f"[red]Failed to add your user to the docker group: {group_result['error']}[/red]")
+            raise typer.Exit(code=1)
+
+        group_just_added = True
+
+    elif not info.docker_compose_v2:
+
+        console.print("Docker Compose v2 isn't available.")
+
+        proceed = yes if non_interactive else typer.confirm(
+            "Install Docker Compose v2 now?", default=True
+        )
+
+        if not proceed:
+            console.print(
+                "[red]Docker Compose v2 is required. Install it manually and re-run.[/red]"
+            )
+            raise typer.Exit(code=1)
+
+        result = ensure_compose_v2(info.os_id)
+
+        if not result["success"]:
+            console.print(f"[red]{result['error']}[/red]")
+            raise typer.Exit(code=1)
+
+    docker_state = detect_docker()
+    info.docker_installed = docker_state["docker_installed"]
+    info.docker_running = docker_state["docker_running"]
+    info.docker_compose_v2 = docker_state["docker_compose_v2"]
+
+    if group_just_added:
+
+        # A plain detect_docker() re-check right after adding this
+        # process's own user to the docker group would still see the
+        # stale group list inherited at this session's login - see
+        # check_docker_ready()'s own docstring for the real failure
+        # this fixes, confirmed live rather than assumed.
+        readiness = check_docker_ready(use_group_workaround=True)
+        info.docker_running = readiness["docker_running"]
+        info.docker_compose_v2 = readiness["docker_compose_v2"]
+
+    if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
+
+        console.print(
+            "[red]Docker still isn't ready after the assisted install - check the output "
+            "above.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    console.print("[green]Docker is ready.[/green]")
+
+    return info, group_just_added
 
 
 @app.callback(invoke_without_command=True)
@@ -105,15 +267,7 @@ def run_install(
                 f"{gpu.vendor.upper()} at {gpu.vram_total_mb / 1024:.1f}GB)"
             )
 
-    if not (info.docker_installed and info.docker_running and info.docker_compose_v2):
-
-        console.print(
-            "[red]Docker (with Compose v2) needs to already be installed and running - "
-            "Anvil doesn't install it for you yet. See https://docs.docker.com/engine/install/[/red]"
-        )
-        raise typer.Exit(code=1)
-
-    console.print("[green]Docker is ready.[/green]")
+    info, group_just_added = _ensure_docker_ready(info, non_interactive, yes)
 
     recommendation = recommend_tier(gpu)
 
@@ -287,7 +441,8 @@ def run_install(
     if do_start:
 
         proc = run_docker_command(
-            ["docker", "compose", "-f", result["compose_path"], "up", "-d"]
+            ["docker", "compose", "-f", result["compose_path"], "up", "-d"],
+            use_group_workaround=group_just_added
         )
 
         if proc.returncode == 0:

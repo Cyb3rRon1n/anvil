@@ -24,7 +24,8 @@ def make_system_info(**overrides) -> SystemInfo:
         docker_compose_v2=True,
         architecture="x86_64",
         os_id="fedora",
-        os_pretty_name="Fedora Linux 44"
+        os_pretty_name="Fedora Linux 44",
+        os_is_atomic=False
     )
 
     base.update(overrides)
@@ -49,19 +50,255 @@ def test_no_gpu_exits_1_with_explanation():
     assert "No dedicated GPU" in result.output
 
 
-def test_docker_not_ready_exits_1():
+def test_docker_not_installed_declined_exits_1():
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)],
+        docker_installed=False,
+        docker_running=False,
+        docker_compose_v2=False
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.install_plan_for",
+        return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
+    ), patch("installer.cli.install_docker") as mock_install:
+
+        result = runner.invoke(app, ["--plain"], input="n\n")
+
+    assert result.exit_code == 1
+    assert "Docker is required" in result.output
+    mock_install.assert_not_called()
+
+
+def test_docker_not_installed_unsupported_distro_exits_1():
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)],
+        docker_installed=False,
+        docker_running=False,
+        docker_compose_v2=False,
+        os_id="gentoo"
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.install_plan_for", return_value=None
+    ):
+
+        result = runner.invoke(app, ["--non-interactive", "--yes"])
+
+    assert result.exit_code == 1
+    assert "No known automatic install method" in result.output
+
+
+def test_docker_not_installed_non_interactive_installs_and_continues(tmp_path):
+    """
+    The real behavior change this session is about: a missing Docker
+    no longer just prints a link and exits - it's installed (assisted)
+    and the run continues, exactly like a host that already had it.
+    """
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)],
+        docker_installed=False,
+        docker_running=False,
+        docker_compose_v2=False
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.install_plan_for",
+        return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
+    ), patch(
+        "installer.cli.install_docker",
+        return_value={"success": True, "error": None, "method": "get.docker.com", "needs_reboot": False}
+    ) as mock_install, patch(
+        "installer.cli.start_docker_service", return_value={"success": True, "error": None}
+    ) as mock_start, patch(
+        "installer.cli.add_user_to_docker_group", return_value={"success": True, "error": None}
+    ) as mock_group, patch(
+        "installer.cli.ensure_compose_v2", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+    assert "Docker is ready" in result.output
+    mock_install.assert_called_once_with("fedora", False)
+    mock_start.assert_called_once()
+    mock_group.assert_called_once()
+
+
+def test_docker_install_failure_exits_1():
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)],
+        docker_installed=False,
+        docker_running=False,
+        docker_compose_v2=False
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.install_plan_for",
+        return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
+    ), patch(
+        "installer.cli.install_docker",
+        return_value={"success": False, "error": "curl: connection refused", "method": "get.docker.com", "needs_reboot": False}
+    ):
+
+        result = runner.invoke(app, ["--non-interactive", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Docker install failed" in result.output
+
+
+def test_docker_not_installed_atomic_host_prints_reboot_instructions():
+    """
+    The real gap found against a real Bazzite GPU host: rpm-ostree
+    layering doesn't take effect live. A successful atomic install
+    must exit cleanly (0, not an error) with real reboot instructions,
+    not silently pretend Docker is ready.
+    """
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 2080", vram_total_mb=8192)],
+        docker_installed=False,
+        docker_running=False,
+        docker_compose_v2=False,
+        os_id="bazzite",
+        os_is_atomic=True
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.install_plan_for",
+        return_value={
+            "method": "rpm-ostree",
+            "description": "rpm-ostree install docker-ce ... (needs a reboot)",
+            "needs_reboot": True
+        }
+    ), patch(
+        "installer.cli.install_docker",
+        return_value={"success": True, "error": None, "method": "rpm-ostree", "needs_reboot": True}
+    ) as mock_install, patch(
+        "installer.cli.start_docker_service"
+    ) as mock_start:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert "reboot" in result.output.lower()
+    mock_install.assert_called_once_with("bazzite", True)
+    mock_start.assert_not_called()
+
+
+def test_docker_running_false_non_interactive_starts_service(tmp_path):
 
     info = make_system_info(
         gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)],
         docker_running=False
     )
 
-    with patch("installer.cli.detect_system", return_value=info):
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.start_docker_service", return_value={"success": True, "error": None}
+    ) as mock_start, patch(
+        "installer.cli.add_user_to_docker_group", return_value={"success": True, "error": None}
+    ) as mock_group, patch(
+        "installer.cli.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ) as mock_ready, patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ):
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+    mock_start.assert_called_once()
+    mock_group.assert_called_once()
+    mock_ready.assert_called_once_with(use_group_workaround=True)
+
+
+def test_docker_running_false_group_add_real_gap_regression():
+    """
+    The exact bug found live against msi-laptop: Docker installed by a
+    previous run (the atomic-OS reboot-split case) never got its user
+    added to the docker group, since group-adding only happened
+    alongside a *fresh* install. The daemon started cleanly
+    (docker_installed/docker_running both real per systemd), but this
+    user's own `docker info` failed with a genuine permission error
+    against docker.sock (root:docker) - not a "not running" problem.
+    A plain detect_docker() re-check inherits this process's own stale
+    group list even after usermod -aG runs, so the fix must route
+    through check_docker_ready(use_group_workaround=True), not a plain
+    detect_docker() call, or this exact failure reproduces.
+    """
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)],
+        docker_running=False
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.start_docker_service", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.add_user_to_docker_group", return_value={"success": True, "error": None}
+    ), patch(
+        # detect_docker() itself still reports "not running" - it has
+        # no group workaround, matching the real failure exactly.
+        "installer.cli.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ):
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+    assert "still isn't ready" not in result.output
+
+
+def test_docker_still_not_ready_after_assist_exits_1(tmp_path):
+    """
+    A real fix attempt that doesn't actually resolve the problem
+    (e.g. the service refuses to start for a reason outside Anvil's
+    control) must be reported honestly, not treated as success.
+    """
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)],
+        docker_running=False
+    )
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.start_docker_service", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.add_user_to_docker_group", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": False, "docker_compose_v2": True}
+    ):
 
         result = runner.invoke(app, ["--non-interactive", "--yes"])
 
     assert result.exit_code == 1
-    assert "Docker" in result.output
+    assert "still isn't ready" in result.output
 
 
 def test_non_interactive_without_yes_exits_1():
@@ -278,6 +515,58 @@ def test_start_success_prints_service_urls(tmp_path):
     assert "Ollama API" in result.output
     assert "Open WebUI" in result.output
     mock_run_docker.assert_called_once()
+
+
+def test_fresh_docker_install_uses_group_workaround_on_start(tmp_path):
+    """
+    A user added to the docker group in this same run has a stale
+    cached group list in this same process - the final `docker compose
+    up` must route through the sg-based workaround (see
+    docker_setup.run_docker_command), not plain sudo/no-sudo, or it'll
+    fail with a permission error despite the group add having "worked."
+    """
+
+    info = make_system_info(
+        gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)],
+        docker_installed=False,
+        docker_running=False,
+        docker_compose_v2=False
+    )
+    up_proc = MagicMock(returncode=0)
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.install_plan_for",
+        return_value={"method": "get.docker.com", "description": "curl ... | sh", "needs_reboot": False}
+    ), patch(
+        "installer.cli.install_docker",
+        return_value={"success": True, "error": None, "method": "get.docker.com", "needs_reboot": False}
+    ), patch(
+        "installer.cli.start_docker_service", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.add_user_to_docker_group", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.ensure_compose_v2", return_value={"success": True, "error": None}
+    ), patch(
+        "installer.cli.detect_docker",
+        return_value={"docker_installed": True, "docker_running": False, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.check_docker_ready",
+        return_value={"docker_running": True, "docker_compose_v2": True}
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.run_docker_command", return_value=up_proc
+    ) as mock_run_docker:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--start"])
+
+    assert result.exit_code == 0, result.output
+    mock_run_docker.assert_called_once_with(
+        ["docker", "compose", "-f", READY_WRITE_RESULT["compose_path"], "up", "-d"],
+        use_group_workaround=True
+    )
 
 
 def test_start_failure_exits_1(tmp_path):

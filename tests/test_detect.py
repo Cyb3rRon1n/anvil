@@ -7,6 +7,7 @@ from installer.detect import (
     detect_host_ip,
     detect_intel_gpus,
     detect_nvidia_gpus,
+    detect_os_is_atomic,
     detect_primary_gpu,
     port_in_use,
 )
@@ -147,6 +148,48 @@ def test_port_in_use_false_for_a_closed_port():
     probe.close()
 
     assert port_in_use(port) is False
+
+
+def test_detect_os_is_atomic_true_when_ostree_marker_present():
+    """
+    /run/ostree-booted is the real, confirmed marker - checked
+    against an actual Bazzite host (a real GPU machine reached over
+    Tailscale) while building this: present there, and this project's
+    own dev machine (a normal mutable Fedora) has no such file.
+    """
+
+    with patch("installer.detect.Path") as mock_path:
+
+        mock_path.return_value.exists.return_value = True
+
+        assert detect_os_is_atomic() is True
+
+
+def test_detect_os_is_atomic_false_on_a_normal_mutable_distro():
+
+    with patch("installer.detect.Path") as mock_path, patch(
+        "installer.detect.shutil.which", return_value=None
+    ):
+
+        mock_path.return_value.exists.return_value = False
+
+        assert detect_os_is_atomic() is False
+
+
+def test_detect_os_is_atomic_falls_back_to_rpm_ostree_on_path():
+    """
+    A narrower fallback signal, not the primary one - the marker file
+    not existing but rpm-ostree still being on PATH (an edge case not
+    observed against real hardware, unlike the marker-file path above).
+    """
+
+    with patch("installer.detect.Path") as mock_path, patch(
+        "installer.detect.shutil.which", return_value="/usr/bin/rpm-ostree"
+    ):
+
+        mock_path.return_value.exists.return_value = False
+
+        assert detect_os_is_atomic() is True
 
 
 def test_detect_host_ip_returns_a_real_address():
