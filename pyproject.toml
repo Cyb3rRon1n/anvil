@@ -42,7 +42,8 @@ dependencies = [
     "textual",
     "psutil",
     "jinja2",
-    "pyyaml"
+    "pyyaml",
+    "smithy-tui @ git+https://github.com/Cyb3rRon1n/smithy.git"
 ]
 
 [project.optional-dependencies]
@@ -53,6 +54,12 @@ anvil = "installer.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["installer"]
+
+[tool.hatch.metadata]
+# Required for the smithy-tui git+https dependency above - hatchling
+# refuses direct references (git/URL deps, as opposed to a plain
+# PyPI-style name) unless explicitly opted into.
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

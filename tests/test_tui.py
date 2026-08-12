@@ -7,6 +7,7 @@ from installer.tui.app import AnvilApp
 from installer.tui.config_screen import ConfigScreen
 from installer.tui.docker_screen import DockerReadyScreen
 from installer.tui.review_screen import ReviewScreen
+from installer.tui.welcome_screen import WelcomeScreen
 
 
 def make_system_info(**overrides) -> SystemInfo:
@@ -45,6 +46,11 @@ async def _launch_at_welcome_screen(info: SystemInfo, previous: dict | None = No
         ctx = app.run_test()
         pilot = await ctx.__aenter__()
 
+        # MainMenuScreen is the real pushed-on-mount root now (the
+        # persistent hub, matching Vulcan's own MainMenuScreen) - push
+        # WelcomeScreen explicitly so every screen-flow test below
+        # still starts exactly where it did before that change.
+        await app.push_screen(WelcomeScreen())
         await app.workers.wait_for_complete()
         await pilot.pause()
 

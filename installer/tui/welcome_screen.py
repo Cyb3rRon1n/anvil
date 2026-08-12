@@ -1,6 +1,6 @@
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, LoadingIndicator, Static
 
@@ -28,7 +28,10 @@ class WelcomeScreen(Screen):
             LoadingIndicator(id="loading"),
             Static("", id="results"),
             Static("", id="previous-note"),
-            Button("Continue", id="continue", disabled=True),
+            Horizontal(
+                Button("Back", id="back"),
+                Button("Continue", id="continue", disabled=True),
+            ),
         )
 
     def on_mount(self) -> None:
@@ -90,3 +93,5 @@ class WelcomeScreen(Screen):
 
         if event.button.id == "continue":
             self.app.push_screen(DockerReadyScreen())
+        elif event.button.id == "back":
+            self.app.pop_screen()

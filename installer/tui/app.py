@@ -1,7 +1,8 @@
+from smithy import apply_whiptail_theme
 from textual.app import App
 
 from installer.detect import GpuInfo, SystemInfo
-from installer.tui.welcome_screen import WelcomeScreen
+from installer.tui.main_menu_screen import MainMenuScreen
 
 
 class AnvilApp(App):
@@ -17,6 +18,8 @@ class AnvilApp(App):
     def __init__(self) -> None:
 
         super().__init__()
+
+        apply_whiptail_theme(self)
 
         self.system_info: SystemInfo | None = None
         self.previous_state: dict | None = None
@@ -35,4 +38,4 @@ class AnvilApp(App):
         self.group_just_added: bool = False
 
     def on_mount(self) -> None:
-        self.push_screen(WelcomeScreen())
+        self.push_screen(MainMenuScreen())
