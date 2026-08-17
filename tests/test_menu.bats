@@ -147,6 +147,50 @@ EOF
     grep -q 'command -v whiptail' "$MENU_SH"
 }
 
+@test "entry point runs Guided Setup directly, no Main Menu, when no stack exists" {
+
+    fake_anvil() {
+        case "$*" in
+            detect) echo "STACK_EXISTS='false'" ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f fake_anvil
+
+    whiptail() {
+        echo "WHIPTAIL_CALL:$*" >&2
+        return 1
+    }
+    export -f whiptail
+
+    run bash -c "ANVIL_BIN=fake_anvil '$MENU_SH'"
+
+    [[ "$output" == *"WHIPTAIL_CALL:"*"Welcome"* ]]
+    [[ "$output" != *"WHIPTAIL_CALL:"*"Choose an action"* ]]
+}
+
+@test "entry point runs Main Menu, not Guided Setup, when a stack already exists" {
+
+    fake_anvil() {
+        case "$*" in
+            detect) echo "STACK_EXISTS='true'" ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f fake_anvil
+
+    whiptail() {
+        echo "WHIPTAIL_CALL:$*" >&2
+        return 1
+    }
+    export -f whiptail
+
+    run bash -c "ANVIL_BIN=fake_anvil '$MENU_SH'"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"WHIPTAIL_CALL:"*"Welcome"* ]]
+}
+
 @test "confirm_and_run clears screen before running" {
 
     whiptail() { return 0; }

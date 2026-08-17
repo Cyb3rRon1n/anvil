@@ -389,8 +389,22 @@ guided_setup() {
     if [ "$rc" -eq 0 ]; then
         log_info "Guided setup completed successfully"
         if [ -z "$TESTING" ]; then
-            whiptail --backtitle "$BACKTITLE" --title "Setup Complete" --msgbox \
-                "Anvil setup is complete!\n\nStack: stack/docker-compose.yml\n\nTo manage your stack:\n  Start:  docker compose -f stack/docker-compose.yml up -d\n  Stop:   docker compose -f stack/docker-compose.yml down\n  Status: docker compose -f stack/docker-compose.yml ps" 18 76
+
+            if [ "$START_FLAG" = "--start" ]; then
+
+                local urls
+                urls=$("$ANVIL_BIN" urls 2>/dev/null)
+
+                local complete_msg="Anvil setup is complete!\n\nYour stack is running."
+                [ -n "$urls" ] && complete_msg+="\n\nService URLs:\n$urls"
+                complete_msg+="\n\nTo manage your stack:\n  Stop:   docker compose -f stack/docker-compose.yml down\n  Status: docker compose -f stack/docker-compose.yml ps"
+
+                whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
+                    --msgbox "$complete_msg" 22 76 --scrolltext
+            else
+                whiptail --backtitle "$BACKTITLE" --title "Setup Complete" --msgbox \
+                    "Anvil setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 76
+            fi
         fi
     else
         log_error "Guided setup failed (exit $rc)"
@@ -467,5 +481,16 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     # Trap unhandled errors — show the failed screen before exiting.
     trap 'log_error "Unhandled error on line $LINENO"; whiptail --backtitle "$BACKTITLE" --title "Error" --msgbox "Unexpected error. Check log:\n$SETUP_LOG" 10 76 2>/dev/null; exit 1' ERR
 
-    main_menu
+    # First run (no stack yet) skips the Main Menu entirely and drops
+    # straight into Guided Setup, matching Security Onion's so-setup -
+    # a single linear wizard, not a menu to pick from. The Main Menu
+    # only appears once a stack exists, for the real day-2 operations
+    # (start/stop/status) so-setup's own one-shot model never needed.
+    refresh_detect
+
+    if [ "$STACK_EXISTS" = "true" ]; then
+        main_menu
+    else
+        guided_setup
+    fi
 fi

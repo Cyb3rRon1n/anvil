@@ -65,6 +65,36 @@ def resolve_ports(config: GenerationConfig) -> dict[str, int]:
     return {**all_ports, **config.port_overrides}
 
 
+def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
+    """
+    Real per-service URLs for the currently-generated stack - shared
+    by the CLI's own post-start printout and `anvil urls` (which
+    installer/menu.sh's whiptail Setup Complete screen calls), so the
+    two can never drift into showing different addresses. Falls back
+    to "localhost" only when host_ip detection itself failed, not as
+    a default choice - a host reached over SSH with no local browser
+    needs the real LAN-facing address, the same reasoning
+    detect_host_ip() and the generated dashboard HTML already apply.
+    """
+
+    host = host_ip or "localhost"
+    resolved = resolve_ports(config)
+
+    lines = [
+        f"  Dashboard:    http://{host}:{resolved['dashboard']}",
+        f"  Ollama API:   http://{host}:{resolved['ollama']}",
+        f"  Open WebUI:   http://{host}:{resolved['open-webui']}",
+    ]
+
+    if "comfyui" in config.enabled_optional:
+        lines.append(f"  ComfyUI:      http://{host}:{resolved['comfyui']}")
+
+    if "invokeai" in config.enabled_optional:
+        lines.append(f"  InvokeAI:     http://{host}:{resolved['invokeai']}")
+
+    return "\n".join(lines)
+
+
 def save_state(config: GenerationConfig, output_dir: Path) -> None:
 
     state = {

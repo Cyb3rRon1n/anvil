@@ -23,10 +23,11 @@ from installer.generate import (
     GenerationConfig,
     default_puid_pgid,
     load_previous_state,
+    render_stack_summary,
     resolve_ports,
     write_stack,
 )
-from installer.post_install import remove_orphaned_containers
+from installer.post_install import remove_orphaned_containers, verify_stack_running
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS, recommend_tier
 
@@ -110,6 +111,34 @@ def detect_shell():
 
     for key, value in fields.items():
         print(f"{key}={value}")
+
+
+@app.command(name="urls")
+def urls_shell():
+    """
+    Print real per-service access URLs for the currently-generated
+    stack, plain text (one per line) - not eval-able KEY=VALUE like
+    `detect`, since installer/menu.sh only needs to display these in a
+    whiptail msgbox, not read them into shell variables. Reuses
+    render_stack_summary() against a GenerationConfig rebuilt from the
+    same saved state `detect`'s PREVIOUS_* fields already read, so the
+    URL list is never a second, drifting implementation of what the
+    live console output already prints during a real install.
+    """
+
+    previous = load_previous_state(STACK_DIR)
+
+    if previous is None:
+        return
+
+    config = GenerationConfig(
+        tier=TIERS[previous["tier"]],
+        puid=previous["puid"],
+        pgid=previous["pgid"],
+        enabled_optional=set(previous["enabled_optional"]),
+    )
+
+    print(render_stack_summary(config, detect_host_ip()))
 
 
 def _launch_menu() -> int:
@@ -653,18 +682,29 @@ def run_install(
 
         if proc.returncode == 0:
 
+            # `up -d` only waits for containers to start, not for the
+            # process inside to actually stay up - a real check here
+            # catches a crash-loop `up -d` alone would silently report
+            # as success.
+            verification = verify_stack_running(result["compose_path"])
+
+            if not verification["all_running"]:
+
+                console.print("[red]Stack started but isn't actually running:[/red]")
+
+                if verification["error"]:
+                    console.print(f"[red]{verification['error']}[/red]")
+
+                for entry in verification["not_running"]:
+                    console.print(
+                        f"[red]  {entry['service']}: {entry['state']} ({entry['status']})[/red]"
+                    )
+
+                console.print("[red]Check `docker compose logs` for the failing service(s).[/red]")
+                raise typer.Exit(code=1)
+
             console.print("[green]Stack is up.[/green]")
-
-            resolved = resolve_ports(config)
-            console.print(f"  Dashboard:    http://localhost:{resolved['dashboard']}")
-            console.print(f"  Ollama API:   http://localhost:{resolved['ollama']}")
-            console.print(f"  Open WebUI:   http://localhost:{resolved['open-webui']}")
-
-            if "comfyui" in config.enabled_optional:
-                console.print(f"  ComfyUI:      http://localhost:{resolved['comfyui']}")
-
-            if "invokeai" in config.enabled_optional:
-                console.print(f"  InvokeAI:     http://localhost:{resolved['invokeai']}")
+            console.print(render_stack_summary(config, detect_host_ip()))
 
         else:
             console.print("[red]Failed to start the stack - check `docker compose logs`.[/red]")

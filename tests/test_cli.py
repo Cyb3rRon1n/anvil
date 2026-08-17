@@ -40,6 +40,44 @@ READY_WRITE_RESULT = {
 }
 
 
+def test_urls_shell_prints_real_service_urls_from_saved_state(tmp_path):
+
+    previous_state = {
+        "tier": "medium",
+        "puid": 1000,
+        "pgid": 1000,
+        "gpu_vendor": "nvidia",
+        "enabled_optional": [],
+    }
+
+    with patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.load_previous_state", return_value=previous_state
+    ), patch(
+        "installer.cli.detect_host_ip", return_value="192.168.1.50"
+    ):
+
+        result = runner.invoke(app, ["urls"])
+
+    assert result.exit_code == 0, result.output
+    assert "http://192.168.1.50" in result.output
+
+
+def test_urls_shell_prints_nothing_with_no_previous_state(tmp_path):
+
+    with patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.load_previous_state", return_value=None
+    ):
+
+        result = runner.invoke(app, ["urls"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == ""
+
+
 def test_no_gpu_exits_1_with_explanation():
 
     with patch("installer.cli.detect_system", return_value=make_system_info()):
@@ -507,6 +545,9 @@ def test_start_success_prints_service_urls(tmp_path):
     ), patch(
         "installer.cli.check_ports_available", return_value={"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}}
     ), patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
+    ), patch(
         "installer.cli.run_docker_command", return_value=up_proc
     ) as mock_run_docker:
 
@@ -560,6 +601,9 @@ def test_fresh_docker_install_uses_group_workaround_on_start(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
         "installer.cli.check_ports_available", return_value={"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}}
+    ), patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
     ), patch(
         "installer.cli.run_docker_command", return_value=up_proc
     ) as mock_run_docker:
@@ -619,6 +663,9 @@ def test_interactive_start_own_orphan_cleans_up_and_retries(tmp_path):
     ), patch(
         "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
     ) as mock_cleanup, patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
+    ), patch(
         "installer.cli.run_docker_command", return_value=up_proc
     ):
 
@@ -655,6 +702,9 @@ def test_interactive_start_remaps_port_and_retries(tmp_path):
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack, patch(
         "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
     ), patch(
         "installer.cli.run_docker_command", return_value=up_proc
     ):

@@ -3,7 +3,14 @@ from unittest.mock import patch
 import pytest
 
 from installer.detect import GpuInfo
-from installer.generate import GenerationConfig, load_previous_state, resolve_ports, save_state, write_stack
+from installer.generate import (
+    GenerationConfig,
+    load_previous_state,
+    render_stack_summary,
+    resolve_ports,
+    save_state,
+    write_stack,
+)
 from installer.tiers import TIERS
 
 
@@ -523,6 +530,35 @@ def test_resolve_ports_applies_overrides():
     assert ports["ollama"] == 11435
     assert ports["dashboard"] == 8081
     assert ports["open-webui"] == 3000
+
+
+def test_render_stack_summary_base_services_only():
+
+    config = make_config("light")
+    summary = render_stack_summary(config, "192.168.1.50")
+
+    assert "Dashboard:    http://192.168.1.50:8080" in summary
+    assert "Ollama API:   http://192.168.1.50:11434" in summary
+    assert "Open WebUI:   http://192.168.1.50:3000" in summary
+    assert "ComfyUI" not in summary
+    assert "InvokeAI" not in summary
+
+
+def test_render_stack_summary_includes_enabled_optional_services():
+
+    config = make_config("heavy", enabled_optional={"comfyui", "invokeai"})
+    summary = render_stack_summary(config, "192.168.1.50")
+
+    assert "ComfyUI:      http://192.168.1.50:8188" in summary
+    assert "InvokeAI:     http://192.168.1.50:9090" in summary
+
+
+def test_render_stack_summary_falls_back_to_localhost_when_host_ip_unknown():
+
+    config = make_config("light")
+    summary = render_stack_summary(config, None)
+
+    assert "http://localhost:8080" in summary
 
 
 def test_write_stack_with_port_overrides_renders_remapped_port(tmp_path):
