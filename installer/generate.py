@@ -44,10 +44,25 @@ class GenerationConfig:
     pgid: int
     gpu: GpuInfo | None = None
     enabled_optional: set[str] = field(default_factory=set)
+    port_overrides: dict[str, int] = field(default_factory=dict)
 
 
 def default_puid_pgid() -> tuple[int, int]:
     return os.getuid(), os.getgid()
+
+
+def resolve_ports(config: GenerationConfig) -> dict[str, int]:
+    """
+    SERVICE_PORTS is the single real registry of every service's
+    default host port (used for port-conflict checks and the post-start
+    summary) - port remapping reuses it rather than inventing a second
+    table that could drift out of sync. config.port_overrides wins
+    per-key when present; a conflict-remediation flow (CLI or whiptail menu) is the
+    only real caller that ever sets it.
+    """
+
+    all_ports = {**SERVICE_PORTS, "dashboard": DASHBOARD_PORT}
+    return {**all_ports, **config.port_overrides}
 
 
 def save_state(config: GenerationConfig, output_dir: Path) -> None:
@@ -91,17 +106,21 @@ def _jinja_env() -> Environment:
     )
 
 
-def render_compose(config: GenerationConfig) -> str:
+def render_compose(config: GenerationConfig, resolved_ports: dict[str, int] | None = None) -> str:
 
     template = _jinja_env().get_template("docker-compose.yml.j2")
     gpu_vendor = config.gpu.vendor if config.gpu else None
+
+    if resolved_ports is None:
+        resolved_ports = resolve_ports(config)
 
     return template.render(
         enabled=enabled_service_keys(config.tier, config.gpu, config.enabled_optional),
         gpu_vendor=gpu_vendor,
         puid=config.puid,
         pgid=config.pgid,
-        render_gid=detect_render_group_gid() if gpu_vendor == "amd" else None
+        render_gid=detect_render_group_gid() if gpu_vendor == "amd" else None,
+        ports=resolved_ports
     )
 
 
@@ -120,8 +139,10 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    resolved_ports = resolve_ports(config)
+
     compose_path = output_dir / "docker-compose.yml"
-    compose_path.write_text(render_compose(config))
+    compose_path.write_text(render_compose(config, resolved_ports))
     save_state(config, output_dir)
 
     enabled = enabled_service_keys(config.tier, config.gpu, config.enabled_optional)
@@ -255,7 +276,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     for key in enabled:
 
-        port = SERVICE_PORTS.get(key)
+        port = resolved_ports.get(key)
 
         if port is not None and port_in_use(port):
 
@@ -295,7 +316,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
                     f"the {key} container will fail to bind it until that's freed."
                 )
 
-    if port_in_use(DASHBOARD_PORT):
+    if port_in_use(resolved_ports.get("dashboard", DASHBOARD_PORT)):
 
         warnings.append(
             f"Port {DASHBOARD_PORT} is already in use by something else on this host - "

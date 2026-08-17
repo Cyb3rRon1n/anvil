@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from installer.detect import GpuInfo
-from installer.generate import GenerationConfig, load_previous_state, save_state, write_stack
+from installer.generate import GenerationConfig, load_previous_state, resolve_ports, save_state, write_stack
 from installer.tiers import TIERS
 
 
@@ -500,3 +500,50 @@ def test_dashboard_falls_back_to_localhost_when_host_ip_undetected(tmp_path):
     index_html = (tmp_path / "stack" / "dashboard" / "index.html").read_text()
 
     assert "http://localhost:3000" in index_html
+
+
+def test_resolve_ports_returns_defaults_when_no_overrides():
+
+    config = make_config("light")
+    ports = resolve_ports(config)
+
+    assert ports["ollama"] == 11434
+    assert ports["open-webui"] == 3000
+    assert ports["comfyui"] == 8188
+    assert ports["invokeai"] == 9090
+    assert ports["dashboard"] == 8080
+
+
+def test_resolve_ports_applies_overrides():
+
+    config = make_config("light")
+    config.port_overrides = {"ollama": 11435, "dashboard": 8081}
+    ports = resolve_ports(config)
+
+    assert ports["ollama"] == 11435
+    assert ports["dashboard"] == 8081
+    assert ports["open-webui"] == 3000
+
+
+def test_write_stack_with_port_overrides_renders_remapped_port(tmp_path):
+
+    config = make_config("light")
+    config.port_overrides = {"ollama": 11435}
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert '"11435:11434"' in compose
+    assert '"11434:11434"' not in compose
+
+
+def test_write_stack_with_port_overrides_dashboard_remapped(tmp_path):
+
+    config = make_config("light")
+    config.port_overrides = {"dashboard": 9000}
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert '"9000:80"' in compose
+    assert '"8080:80"' not in compose

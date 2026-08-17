@@ -505,6 +505,8 @@ def test_start_success_prints_service_urls(tmp_path):
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
+        "installer.cli.check_ports_available", return_value={"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}}
+    ), patch(
         "installer.cli.run_docker_command", return_value=up_proc
     ) as mock_run_docker:
 
@@ -557,6 +559,8 @@ def test_fresh_docker_install_uses_group_workaround_on_start(tmp_path):
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
+        "installer.cli.check_ports_available", return_value={"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}}
+    ), patch(
         "installer.cli.run_docker_command", return_value=up_proc
     ) as mock_run_docker:
 
@@ -579,6 +583,8 @@ def test_start_failure_exits_1(tmp_path):
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ), patch(
+        "installer.cli.check_ports_available", return_value={"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}}
+    ), patch(
         "installer.cli.run_docker_command", return_value=up_proc
     ):
 
@@ -586,3 +592,117 @@ def test_start_failure_exits_1(tmp_path):
 
     assert result.exit_code == 1
     assert "Failed to start" in result.output
+
+
+def test_interactive_start_own_orphan_cleans_up_and_retries(tmp_path):
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
+    up_proc = MagicMock(returncode=0)
+
+    conflict_then_clear = [
+        {
+            "available": False,
+            "conflicts": [11434],
+            "owners": {11434: 'your own orphaned containers from a previous stack (project "stack")'},
+            "port_services": {11434: "ollama"},
+            "own_orphan": {11434: True},
+        },
+        {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+    ]
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.remove_orphaned_containers", return_value={"success": True, "error": None}
+    ) as mock_cleanup, patch(
+        "installer.cli.run_docker_command", return_value=up_proc
+    ):
+
+        result = runner.invoke(
+            app,
+            ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
+            input="y\ny\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack is up" in result.output
+    mock_cleanup.assert_called_once_with("stack")
+
+
+def test_interactive_start_remaps_port_and_retries(tmp_path):
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
+    up_proc = MagicMock(returncode=0)
+
+    conflict_then_clear = [
+        {
+            "available": False,
+            "conflicts": [11434],
+            "owners": {11434: None},
+            "port_services": {11434: "ollama"},
+            "own_orphan": {11434: False},
+        },
+        {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+    ]
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack, patch(
+        "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.run_docker_command", return_value=up_proc
+    ):
+
+        result = runner.invoke(
+            app,
+            ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
+            input="y\n11500\n"
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Stack is up" in result.output
+
+    # First call is the initial generate; the second is the post-remap
+    # regenerate, and must carry the new port through port_overrides.
+    assert mock_write_stack.call_count == 2
+    regenerated_config = mock_write_stack.call_args_list[1][0][0]
+    assert regenerated_config.port_overrides == {"ollama": 11500}
+
+
+def test_interactive_start_port_conflict_give_up_exits_1(tmp_path):
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
+
+    always_conflicted = {
+        "available": False,
+        "conflicts": [80],
+        "owners": {80: None},
+        "port_services": {80: "traefik"},
+        "own_orphan": {80: False},
+    }
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ), patch(
+        "installer.cli.check_ports_available", return_value=always_conflicted
+    ), patch(
+        "installer.cli.run_docker_command"
+    ) as mock_run_docker:
+
+        result = runner.invoke(
+            app,
+            ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
+            input="y\n"
+        )
+
+    assert result.exit_code == 1
+    assert "can't be remapped automatically" in result.output
+    mock_run_docker.assert_not_called()

@@ -7,7 +7,7 @@ services:
     volumes:
       - ./data/ollama:/root/.ollama
     ports:
-      - "11434:11434"
+      - "{{ ports.ollama }}:11434"
 {% if gpu_vendor == 'nvidia' %}
     deploy:
       resources:
@@ -36,7 +36,7 @@ services:
     volumes:
       - ./data/open-webui:/app/backend/data
     ports:
-      - "3000:8080"
+      - "{{ ports['open-webui'] }}:8080"
     depends_on:
       - ollama
     restart: unless-stopped
@@ -54,7 +54,7 @@ services:
       - ./data/comfyui/run:/comfy/mnt
       - ./data/comfyui/basedir:/basedir
     ports:
-      - "8188:8188"
+      - "{{ ports.comfyui }}:8188"
     deploy:
       resources:
         reservations:
@@ -81,7 +81,7 @@ services:
       - ./data/comfyui/custom_nodes:/workspace/ComfyUI/custom_nodes
       - ./data/comfyui/user:/workspace/ComfyUI/user
     ports:
-      - "8188:8188"
+      - "{{ ports.comfyui }}:8188"
     restart: unless-stopped
 {% elif 'comfyui' in enabled and gpu_vendor == 'intel' %}
   comfyui:
@@ -98,7 +98,7 @@ services:
       - ./data/comfyui/output:/root/ComfyUI/output
       - ./data/comfyui/user:/root/ComfyUI/user
     ports:
-      - "8188:8188"
+      - "{{ ports.comfyui }}:8188"
     restart: unless-stopped
 {% endif %}
 {% if 'invokeai' in enabled and gpu_vendor == 'nvidia' %}
@@ -111,7 +111,7 @@ services:
     volumes:
       - ./data/invokeai:/invokeai
     ports:
-      - "9090:9090"
+      - "{{ ports.invokeai }}:9090"
     deploy:
       resources:
         reservations:
@@ -135,7 +135,7 @@ services:
     volumes:
       - ./data/invokeai:/invokeai
     ports:
-      - "9090:9090"
+      - "{{ ports.invokeai }}:9090"
     restart: unless-stopped
 {% endif %}
   dashboard:
@@ -144,5 +144,5 @@ services:
     volumes:
       - ./dashboard:/usr/share/nginx/html:ro
     ports:
-      - "8080:80"
+      - "{{ ports.dashboard }}:80"
     restart: unless-stopped
