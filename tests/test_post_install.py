@@ -1,7 +1,15 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from installer.generate import STATE_FILENAME
-from installer.post_install import stack_containers_exist, uninstall_stack, verify_stack_running
+from installer.post_install import (
+    backup_stack,
+    restore_stack,
+    stack_containers_exist,
+    uninstall_stack,
+    update_stack,
+    verify_stack_running,
+)
 
 
 def test_verify_stack_running_all_healthy_ndjson():
@@ -148,3 +156,71 @@ def test_uninstall_stack_uses_orphan_cleanup_when_no_compose_file(tmp_path):
 
     assert result == {"success": True, "error": None}
     mock_run.assert_called_once_with(["docker", "compose", "-p", "stack", "down"])
+
+
+def test_update_stack_success_calls_pull_then_up():
+
+    calls = []
+
+    def fake_run(cmd):
+        calls.append(cmd)
+        return MagicMock(returncode=0)
+
+    with patch("installer.post_install.run_docker_command", side_effect=fake_run):
+
+        result = update_stack("stack/docker-compose.yml")
+
+    assert result == {"success": True, "error": None}
+    assert calls[0] == ["docker", "compose", "-f", "stack/docker-compose.yml", "pull"]
+    assert calls[1] == ["docker", "compose", "-f", "stack/docker-compose.yml", "up", "-d"]
+
+
+def test_update_stack_pull_failure_skips_recreate():
+
+    with patch(
+        "installer.post_install.run_docker_command", return_value=MagicMock(returncode=1)
+    ) as mock_run:
+
+        result = update_stack("stack/docker-compose.yml")
+
+    assert result["success"] is False
+    assert "pull images" in result["error"]
+    mock_run.assert_called_once()
+
+
+def test_backup_stack_no_stack_found():
+
+    result = backup_stack(Path("/nonexistent/stack"))
+
+    assert result["success"] is False
+    assert result["backup_path"] is None
+
+
+def test_backup_and_restore_stack_round_trip(tmp_path):
+
+    stack_dir = _make_stack(tmp_path)
+    backup_dir = tmp_path / "backups"
+
+    with patch("installer.post_install.run_docker_command", return_value=MagicMock(returncode=0)):
+
+        backup_result = backup_stack(stack_dir, backup_dir=backup_dir)
+        assert backup_result["success"] is True
+        assert backup_result["backup_path"].exists()
+
+        (stack_dir / "docker-compose.yml").unlink()
+        (stack_dir / STATE_FILENAME).unlink()
+
+        restore_result = restore_stack(backup_result["backup_path"], stack_dir)
+
+    assert restore_result == {"success": True, "error": None}
+    assert (stack_dir / "docker-compose.yml").read_text() == "services: {}"
+    assert (stack_dir / STATE_FILENAME).exists()
+    assert (stack_dir / "data" / "ollama" / "model.bin").exists()
+
+
+def test_restore_stack_missing_backup_file(tmp_path):
+
+    result = restore_stack(tmp_path / "does-not-exist.tar.gz", tmp_path / "stack")
+
+    assert result["success"] is False
+    assert "not found" in result["error"]

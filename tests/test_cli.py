@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -866,3 +867,118 @@ def test_uninstall_proceeds_when_orphaned_containers_exist_without_stack_dir(tmp
 
     assert result.exit_code == 0, result.output
     assert "Stack removed" in result.output
+
+
+def test_update_no_stack_found_exits_1(tmp_path):
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
+
+        result = runner.invoke(app, ["update"])
+
+    assert result.exit_code == 1
+    assert "No stack found" in result.output
+
+
+def test_update_confirm_accepted_calls_update_stack(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.update_stack", return_value={"success": True, "error": None}
+    ) as mock_update:
+
+        result = runner.invoke(app, ["update"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Stack updated" in result.output
+    mock_update.assert_called_once_with(str(stack_dir / "docker-compose.yml"))
+
+
+def test_update_failure_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}")
+
+    with patch("installer.cli.STACK_DIR", stack_dir), patch(
+        "installer.cli.update_stack",
+        return_value={"success": False, "error": "Failed to pull images - check `docker compose logs`."}
+    ):
+
+        result = runner.invoke(app, ["update", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Failed to pull images" in result.output
+
+
+def test_backup_success():
+
+    with patch(
+        "installer.cli.backup_stack",
+        return_value={"success": True, "error": None, "backup_path": "backups/anvil-backup-x.tar.gz"}
+    ):
+
+        result = runner.invoke(app, ["backup"])
+
+    assert result.exit_code == 0, result.output
+    assert "Backed up to backups/anvil-backup-x.tar.gz" in result.output
+
+
+def test_backup_failure_exits_1():
+
+    with patch(
+        "installer.cli.backup_stack",
+        return_value={"success": False, "error": "No stack found to back up.", "backup_path": None}
+    ):
+
+        result = runner.invoke(app, ["backup"])
+
+    assert result.exit_code == 1
+    assert "No stack found to back up" in result.output
+
+
+def test_restore_no_backups_found_exits_1(tmp_path, monkeypatch):
+
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["restore", "--non-interactive", "--yes"])
+
+    assert result.exit_code == 1
+    assert "No backups found" in result.output
+
+
+def test_restore_confirm_accepted_calls_restore_stack(tmp_path, monkeypatch):
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "backups").mkdir()
+    backup_file = tmp_path / "backups" / "anvil-backup-20260101T000000Z.tar.gz"
+    backup_file.write_text("fake")
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.restore_stack", return_value={"success": True, "error": None}
+    ) as mock_restore:
+
+        result = runner.invoke(app, ["restore"], input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "Restored" in result.output
+    mock_restore.assert_called_once_with(
+        Path("backups") / "anvil-backup-20260101T000000Z.tar.gz", tmp_path / "stack"
+    )
+
+
+def test_restore_explicit_file_argument(tmp_path):
+
+    backup_file = tmp_path / "some-backup.tar.gz"
+    backup_file.write_text("fake")
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"), patch(
+        "installer.cli.restore_stack", return_value={"success": True, "error": None}
+    ) as mock_restore:
+
+        result = runner.invoke(app, ["restore", str(backup_file), "--non-interactive", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    mock_restore.assert_called_once_with(backup_file, tmp_path / "stack")

@@ -148,12 +148,15 @@ main_menu() {
     while true; do
 
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Anvil" \
-            --menu "Choose an action:" 20 76 6 \
+            --menu "Choose an action:" 22 76 9 \
             "guided-setup"    "1. Guided Setup - detect GPU, pick tier, generate stack" \
             "start-stack"     "2. Start Stack - docker compose up -d" \
             "stop-stack"      "3. Stop Stack - docker compose down" \
-            "view-status"     "4. View Status - show enabled services and URLs" \
-            "uninstall-stack" "5. Uninstall Stack - delete config, keep downloaded models" \
+            "update-stack"    "4. Update Stack - pull latest images, recreate containers" \
+            "view-status"     "5. View Status - show enabled services and URLs" \
+            "backup-stack"    "6. Backup Stack - archive compose/state to backups/" \
+            "restore-stack"   "7. Restore Stack - from the most recent backup" \
+            "uninstall-stack" "8. Uninstall Stack - delete config, keep downloaded models" \
             "exit"            "0. Exit" \
             3>&1 1>&2 2>&3)
         status=$?
@@ -175,8 +178,23 @@ main_menu() {
                     "This will stop and remove the running stack containers and network." \
                     docker compose -f "stack/docker-compose.yml" down
                 ;;
+            update-stack)
+                confirm_and_run "Update Stack" \
+                    "This will pull the latest images and recreate containers." \
+                    "$ANVIL_BIN" update --non-interactive --yes
+                ;;
             view-status)
                 view_status
+                ;;
+            backup-stack)
+                confirm_and_run "Backup Stack" \
+                    "This will archive docker-compose.yml and the state file to backups/." \
+                    "$ANVIL_BIN" backup
+                ;;
+            restore-stack)
+                confirm_and_run "Restore Stack" \
+                    "This will stop the running stack and restore docker-compose.yml and the state file from the most recent backup." \
+                    "$ANVIL_BIN" restore --non-interactive --yes
                 ;;
             uninstall-stack)
                 uninstall_flow

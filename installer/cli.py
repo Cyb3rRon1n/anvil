@@ -28,9 +28,12 @@ from installer.generate import (
     write_stack,
 )
 from installer.post_install import (
+    backup_stack,
     remove_orphaned_containers,
+    restore_stack,
     stack_containers_exist,
     uninstall_stack,
+    update_stack,
     verify_stack_running,
 )
 from installer.preflight import check_ports_available, format_port_conflicts
@@ -192,6 +195,106 @@ def uninstall(
         raise typer.Exit(code=1)
 
     console.print("[green]Stack removed.[/green] Run `anvil` again for a fresh setup.")
+
+
+@app.command()
+def update(
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes")
+):
+    """
+    Pull the latest images for the generated stack and recreate containers.
+    """
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+
+    if not compose_path.exists():
+        console.print("[red]No stack found - run `anvil` first to generate one.[/red]")
+        raise typer.Exit(code=1)
+
+    if non_interactive and not yes:
+        console.print("[red]--yes is required alongside --non-interactive.[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"This will pull the latest images and recreate containers for {compose_path}.")
+
+    if not yes and not typer.confirm("Continue?"):
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+    result = update_stack(str(compose_path))
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Stack updated.[/green]")
+
+
+@app.command()
+def backup():
+    """
+    Archive docker-compose.yml and the state file to backups/. Does not
+    include stack/data/ (downloaded models/settings) - no clean, safe
+    boundary exists yet between real settings and model weights sharing
+    the same directories.
+    """
+
+    result = backup_stack(STACK_DIR)
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]Backed up to {result['backup_path']}.[/green]")
+
+
+@app.command()
+def restore(
+    file: str = typer.Argument(None),
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes")
+):
+    """
+    Restore docker-compose.yml and the state file from the most recent
+    (or a given) backup. Never touches stack/data/ - it was never
+    included in the backup.
+    """
+
+    backup_dir = Path("backups")
+
+    if file:
+        backup_path = Path(file)
+    else:
+
+        candidates = sorted(backup_dir.glob("anvil-backup-*.tar.gz")) if backup_dir.exists() else []
+
+        if not candidates:
+            console.print("[red]No backups found in backups/.[/red]")
+            raise typer.Exit(code=1)
+
+        backup_path = candidates[-1]
+
+    if non_interactive and not yes:
+        console.print("[red]--yes is required alongside --non-interactive.[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"This will stop the running stack (if any) and restore docker-compose.yml "
+        f"and the state file from {backup_path}."
+    )
+
+    if not yes and not typer.confirm("Continue?"):
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+    result = restore_stack(backup_path, STACK_DIR)
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Restored.[/green] Run `anvil update` or start the stack again.")
 
 
 def _launch_menu() -> int:
