@@ -18,31 +18,44 @@ BACKTITLE="Anvil - GPU-Compute Creativity Forge"
 # --- Theme ---------------------------------------------------------
 #
 # whiptail/newt only supports a fixed set of named colors (no
-# arbitrary hex) - this is the closest real mapping to the
-# cyan-panel / near-black-background / red-selection palette.
+# arbitrary hex). Inverted from Vulcan's cyan-panel-on-black palette -
+# dark panel on a near-black background instead, a real visual break
+# from Vulcan's theme (this project's own "forge" branding fits a
+# darker palette better than a bright cyan panel) - every fg,bg pair
+# below is Vulcan's swapped to bg,fg, so the same relative contrast
+# between elements holds, just inverted.
+#
+# button/checkbox/listbox originally used the same color for BOTH
+# their focused and unfocused state - identical to window's own
+# background, so an unfocused Yes/No button (or unselected list row)
+# was visually indistinguishable from empty dialog space; red for the
+# focused state also didn't reliably show up on some terminal color
+# profiles. Same real bug found and fixed in Vulcan's identical theme
+# block - every interactive element gets its own visible box at rest
+# and a yellow highlight when focused.
 export NEWT_COLORS='
 root=white,black
-border=cyan,black
-window=black,cyan
+border=black,cyan
+window=cyan,black
 shadow=black,black
-title=black,cyan
+title=cyan,black
 button=black,cyan
-actbutton=white,red
+actbutton=yellow,black
 checkbox=black,cyan
-actcheckbox=white,red
-entry=black,cyan
+actcheckbox=yellow,black
+entry=cyan,black
 label=white,black
 listbox=black,cyan
-actlistbox=white,red
+actlistbox=yellow,black
 sellistbox=black,cyan
-actsellistbox=white,red
-textbox=black,cyan
-acttextbox=black,cyan
+actsellistbox=yellow,black
+textbox=cyan,black
+acttextbox=cyan,black
 helpline=white,black
 roottext=white,black
-emptyscale=,black
-fullscale=,red
-disabledentry=gray,cyan
+emptyscale=black,
+fullscale=red,
+disabledentry=cyan,gray
 compactbutton=black,cyan
 '
 
@@ -135,12 +148,13 @@ main_menu() {
     while true; do
 
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Anvil" \
-            --menu "Choose an action:" 20 76 5 \
-            "guided-setup" "1. Guided Setup - detect GPU, pick tier, generate stack" \
-            "start-stack"  "2. Start Stack - docker compose up -d" \
-            "stop-stack"   "3. Stop Stack - docker compose down" \
-            "view-status"  "4. View Status - show enabled services and URLs" \
-            "exit"         "0. Exit" \
+            --menu "Choose an action:" 20 76 6 \
+            "guided-setup"    "1. Guided Setup - detect GPU, pick tier, generate stack" \
+            "start-stack"     "2. Start Stack - docker compose up -d" \
+            "stop-stack"      "3. Stop Stack - docker compose down" \
+            "view-status"     "4. View Status - show enabled services and URLs" \
+            "uninstall-stack" "5. Uninstall Stack - delete config, keep downloaded models" \
+            "exit"            "0. Exit" \
             3>&1 1>&2 2>&3)
         status=$?
 
@@ -163,6 +177,9 @@ main_menu() {
                 ;;
             view-status)
                 view_status
+                ;;
+            uninstall-stack)
+                uninstall_flow
                 ;;
         esac
 
@@ -464,6 +481,22 @@ view_status() {
 
     whiptail --backtitle "$BACKTITLE" --title "View Status" \
         --msgbox "$status_text" 16 70
+}
+
+# --- Uninstall ---------------------------------------------------------
+
+uninstall_flow() {
+
+    local purge_flags=()
+
+    if whiptail --backtitle "$BACKTITLE" --title "Uninstall Stack" \
+        --yesno "Also delete stack/data/ - real downloaded models, tens to hundreds of GB? (default: No - keep them)" 10 70 --defaultno; then
+        purge_flags=(--purge-data)
+    fi
+
+    confirm_and_run "Uninstall Stack" \
+        "This will stop the running stack (if any) and delete stack/docker-compose.yml, its state file, and stack/dashboard/. Downloaded models are always kept unless you said yes above." \
+        "$ANVIL_BIN" uninstall --non-interactive --yes "${purge_flags[@]}"
 }
 
 # --- Entry point -----------------------------------------------------

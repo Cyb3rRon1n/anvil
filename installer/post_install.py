@@ -8,9 +8,12 @@ are actually still running.
 """
 
 import json
+import shutil
 import subprocess
+from pathlib import Path
 
 from installer.docker_setup import run_docker_command
+from installer.generate import STATE_FILENAME
 
 
 def _parse_compose_ps_json(stdout: str) -> list[dict]:
@@ -91,5 +94,82 @@ def remove_orphaned_containers(project_name: str) -> dict:
 
     if down.returncode != 0:
         return {"success": False, "error": "Failed to stop orphaned containers - check `docker compose logs`."}
+
+    return {"success": True, "error": None}
+
+
+def stack_containers_exist(project_name: str) -> bool:
+    """
+    True if any container (running or stopped) still carries Docker
+    Compose's own com.docker.compose.project label for this project -
+    ported from Vulcan's post_install.py function of the same name,
+    unchanged (generic Docker Compose behavior, not project-specific).
+    Used by uninstall_stack() to find containers orphaned by stack/
+    being deleted some other way, so a real docker compose down still
+    runs even without a compose file on disk to point at.
+    """
+
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={project_name}", "-q"],
+            capture_output=True,
+            text=True
+        )
+    except OSError:
+        return False
+
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def uninstall_stack(compose_path: str, stack_dir: Path, purge_data: bool = False) -> dict:
+    """
+    Stops the running stack and deletes stack/'s config (docker-compose.yml,
+    the state file, dashboard/) - but leaves stack/data/ (real downloaded
+    models, tens to hundreds of GB) untouched unless purge_data is
+    explicitly passed.
+
+    Deliberately NOT a straight port of Vulcan's uninstall_stack(), which
+    deletes its whole stack/ tree unconditionally: Vulcan's user data (the
+    media library) lives outside stack/ entirely, so that's safe there.
+    Anvil's model downloads live inside stack/ (stack/data/<service>) -
+    doing the same thing here would silently destroy real,
+    expensive-to-redownload weights on every uninstall by default.
+    """
+
+    stack_dir = Path(stack_dir)
+
+    if Path(compose_path).exists():
+
+        down = run_docker_command(["docker", "compose", "-f", compose_path, "down"])
+
+        if down.returncode != 0:
+            return {"success": False, "error": "Failed to stop the running stack - check `docker compose logs`."}
+
+    elif stack_containers_exist(stack_dir.name):
+
+        down = run_docker_command(["docker", "compose", "-p", stack_dir.name, "down"])
+
+        if down.returncode != 0:
+            return {"success": False, "error": "Failed to stop orphaned containers - check `docker compose logs`."}
+
+    if Path(compose_path).exists():
+        Path(compose_path).unlink()
+
+    state_path = stack_dir / STATE_FILENAME
+    if state_path.exists():
+        state_path.unlink()
+
+    dashboard_dir = stack_dir / "dashboard"
+    if dashboard_dir.exists():
+        shutil.rmtree(dashboard_dir)
+
+    if purge_data:
+
+        data_dir = stack_dir / "data"
+        if data_dir.exists():
+            shutil.rmtree(data_dir)
+
+    if stack_dir.exists() and not any(stack_dir.iterdir()):
+        stack_dir.rmdir()
 
     return {"success": True, "error": None}

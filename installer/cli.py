@@ -27,7 +27,12 @@ from installer.generate import (
     resolve_ports,
     write_stack,
 )
-from installer.post_install import remove_orphaned_containers, verify_stack_running
+from installer.post_install import (
+    remove_orphaned_containers,
+    stack_containers_exist,
+    uninstall_stack,
+    verify_stack_running,
+)
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS, recommend_tier
 
@@ -139,6 +144,54 @@ def urls_shell():
     )
 
     print(render_stack_summary(config, detect_host_ip()))
+
+
+@app.command()
+def uninstall(
+    non_interactive: bool = typer.Option(False, "--non-interactive"),
+    yes: bool = typer.Option(False, "--yes"),
+    purge_data: bool = typer.Option(
+        False, "--purge-data",
+        help="Also delete stack/data/ - real downloaded models, tens to hundreds of GB"
+    )
+):
+    """
+    Stop the generated stack and delete stack/'s config (docker-compose.yml,
+    state file, dashboard/) - stack/data/ (downloaded models) is left
+    untouched unless --purge-data is passed.
+    """
+
+    compose_path = STACK_DIR / "docker-compose.yml"
+
+    if not compose_path.exists() and not stack_containers_exist(STACK_DIR.name):
+        console.print("[red]No stack found - nothing to uninstall.[/red]")
+        raise typer.Exit(code=1)
+
+    if non_interactive and not yes:
+        console.print("[red]--yes is required alongside --non-interactive.[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        "This will stop the running stack (if any) and delete "
+        f"{compose_path}, its state file, and {STACK_DIR}/dashboard/."
+        + (
+            f" {STACK_DIR}/data/ (downloaded models) will also be deleted."
+            if purge_data
+            else f" {STACK_DIR}/data/ (downloaded models) is left untouched."
+        )
+    )
+
+    if not yes and not typer.confirm("Continue?"):
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+    result = uninstall_stack(str(compose_path), STACK_DIR, purge_data=purge_data)
+
+    if not result["success"]:
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]Stack removed.[/green] Run `anvil` again for a fresh setup.")
 
 
 def _launch_menu() -> int:
