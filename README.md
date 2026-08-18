@@ -4,7 +4,7 @@
 
 - **What** — Detects your GPU's real VRAM, recommends a sized tier, and generates a ready-to-run Docker Compose stack for local LLMs and image generation.
 - **Who it's for** — Homelab and self-hosted folks who want a local AI/creative setup without hand-researching VRAM requirements, Docker images, and GPU passthrough flags per vendor.
-- **Why** — Local LLM and image-generation workloads are VRAM-bound, a different sizing problem than [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge, Anvil's sibling project) solves for CPU/RAM/disk.
+- **Why** — Local LLM and image-generation workloads are VRAM-bound, a different sizing problem than [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge, Anvil's sibling project) solves for CPU/RAM/disk. See both side by side: [cyb3rron1n.github.io](https://cyb3rron1n.github.io/).
 - **Where** — Any Linux host with Docker and a real NVIDIA, AMD, or Intel Arc GPU.
 - **When to use it** — Real, working build, not a proof of concept. Honest gaps are documented, not hidden — see [ROADMAP.md](ROADMAP.md) for what's shipped versus still open, and [CLAUDE.md](CLAUDE.md) for exactly what's verified against real hardware and what isn't yet.
 
