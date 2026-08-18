@@ -59,6 +59,28 @@ disabledentry=cyan,gray
 compactbutton=black,cyan
 '
 
+# whiptail defaults to "compact" Yes/No/OK/Cancel buttons - plain
+# "<Yes>"/"<No>" text with no focused-state color of their own (there's
+# no actcompactbutton in newt's colorset list, only actbutton/actcheckbox/
+# actlistbox/etc. for other widgets) - so no matter what button/actbutton
+# above are set to, Tab/arrow-key focus between Yes and No is never
+# visible. --fullbuttons renders real boxed buttons that DO use
+# button/actbutton, restoring a visible focus indicator. Same real bug
+# and fix as Vulcan's identical theme block.
+#
+# Only define this if nothing already has - tests/test_menu.bats
+# exports its own `whiptail` mock function (real dialogs can't run
+# without a terminal) to intercept every call in this script; an
+# unconditional definition here would silently override that mock
+# with the real binary instead, breaking every test relying on the
+# mock's recorded output (confirmed the hard way in Vulcan's identical
+# fix, see its own commit history).
+if ! declare -F whiptail >/dev/null; then
+    whiptail() {
+        command whiptail --fullbuttons "$@"
+    }
+fi
+
 # --- Small helpers ---------------------------------------------------
 
 # In TESTING mode, skip all whiptail dialogs (set TESTING=true to
@@ -521,9 +543,33 @@ uninstall_flow() {
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 
-    if ! command -v whiptail >/dev/null 2>&1; then
-        echo "whiptail is required but not installed. Install it (e.g. 'sudo apt install whiptail' or 'sudo dnf install newt') and try again." >&2
-        exit 1
+    # type -P, not command -v: this script defines its own `whiptail`
+    # shell function above (the --fullbuttons wrapper), and `command -v`
+    # reports functions as a match too - it would always "find" whiptail
+    # here even with the real binary missing. -P forces a real PATH
+    # search, ignoring functions/aliases/builtins.
+    if ! type -P whiptail >/dev/null 2>&1; then
+
+        echo "whiptail not found - installing it (needed for this menu)..."
+        SUDO=""
+        [ "$EUID" -ne 0 ] && SUDO="sudo"
+
+        if command -v apt-get >/dev/null 2>&1; then
+            $SUDO apt-get update -qq && $SUDO apt-get install -y whiptail
+        elif command -v dnf >/dev/null 2>&1; then
+            $SUDO dnf install -y newt
+        elif command -v pacman >/dev/null 2>&1; then
+            $SUDO pacman -Sy --noconfirm libnewt
+        elif command -v zypper >/dev/null 2>&1; then
+            $SUDO zypper install -y newt
+        elif command -v apk >/dev/null 2>&1; then
+            $SUDO apk add --no-cache newt
+        fi
+
+        if ! type -P whiptail >/dev/null 2>&1; then
+            echo "whiptail is required but could not be auto-installed. Install it manually (Debian/Ubuntu: whiptail, Fedora/RHEL: newt, Arch: libnewt, openSUSE: newt) and try again." >&2
+            exit 1
+        fi
     fi
 
     # Preserve old log on each run (Security Onion pattern).

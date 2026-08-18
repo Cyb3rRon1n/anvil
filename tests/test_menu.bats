@@ -143,8 +143,10 @@ EOF
 
     # When sourced (BASH_SOURCE != $0), the guard is skipped - this is
     # the mechanism tests use. Verify the guard exists by checking the
-    # file content.
-    grep -q 'command -v whiptail' "$MENU_SH"
+    # file content. type -P, not command -v: the script's own
+    # --fullbuttons wrapper defines a `whiptail` function, which
+    # `command -v` would also match.
+    grep -q 'type -P whiptail' "$MENU_SH"
 }
 
 @test "entry point runs Guided Setup directly, no Main Menu, when no stack exists" {
