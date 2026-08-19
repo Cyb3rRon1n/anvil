@@ -62,6 +62,26 @@ _LIGHT_SERVICES = [
     ServiceDefinition("whisper", "Whisper via speaches (speech-to-text)", optional=True),
     ServiceDefinition("tts", "Kokoro (text-to-speech)", optional=True),
     ServiceDefinition("n8n", "n8n (workflow automation)", optional=True),
+    # A second CPU-only, vendor-agnostic slice - LiteLLM/SearXNG real
+    # configs sourced from ODS the same way as above; Vane (see below)
+    # is not, since ODS's own reference is stale against it. Default
+    # off (unlike RAG/voice/n8n) - these are more specialized additions
+    # (an LLM proxy needing the user's own API keys, a separate search
+    # stack) than direct Open WebUI feature enhancers, and defaulting
+    # four more containers on would roughly double a fresh Light install's
+    # footprint. A real, decided choice, not an oversight.
+    ServiceDefinition("litellm", "LiteLLM (universal LLM proxy - local + cloud providers)", optional=True),
+    ServiceDefinition("searxng", "SearXNG (self-hosted metasearch engine)", optional=True),
+    # Vane - formerly "Perplexica", renamed upstream. ODS's own
+    # reference (image itzcrazykns1337/perplexica:slim-latest, a custom
+    # entrypoint wrapper) is stale against the real current project:
+    # confirmed via the real upstream repo, which now ships as
+    # itzcrazykns1337/vane, no custom entrypoint needed, and configures
+    # via a one-time web setup screen instead of a mounted config file -
+    # built fresh from that, not ported from ODS. Needs SearXNG to
+    # function; write_stack() auto-enables it if requested alone.
+    ServiceDefinition("vane", "Vane, formerly Perplexica (AI-powered search - needs SearXNG)", optional=True),
+    ServiceDefinition("localai", "LocalAI (OpenAI-compatible multi-modal inference server)", optional=True),
 ]
 
 _MEDIUM_SERVICES = list(_LIGHT_SERVICES)

@@ -567,6 +567,67 @@ def test_non_interactive_light_tier_defaults_rag_voice_n8n_on(tmp_path):
     assert config.enabled_optional == CPU_ONLY_DEFAULTS
 
 
+def test_non_interactive_litellm_searxng_vane_localai_default_off(tmp_path):
+    """
+    Unlike rag/voice/n8n, these four default off - a fresh non-interactive
+    run must not enable any of them without explicit flags.
+    """
+
+    info = make_system_info(gpus=[])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional.isdisjoint({"litellm", "searxng", "vane", "localai"})
+
+
+def test_non_interactive_explicit_flags_enable_litellm_searxng_vane_localai(tmp_path):
+
+    info = make_system_info(gpus=[])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            ["--non-interactive", "--yes", "--no-start", "--litellm", "--searxng", "--vane", "--localai"]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert {"litellm", "searxng", "vane", "localai"} <= config.enabled_optional
+
+
+def test_non_interactive_vane_alone_implies_searxng(tmp_path):
+
+    info = make_system_info(gpus=[])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start", "--vane"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert "searxng" in config.enabled_optional
+
+
 def test_non_interactive_defaults_vulcan_integration_on_when_found(tmp_path):
 
     info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
@@ -651,9 +712,9 @@ def test_interactive_declines_vulcan_integration_when_found(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000", "--no-start"],
-            # blank x3 accepts RAG/voice/n8n defaults, "n" declines the
-            # Vulcan integration confirm.
-            input="\n\n\nn\n"
+            # blank x7 accepts RAG/voice/n8n/litellm/searxng/vane/localai
+            # defaults, "n" declines the Vulcan integration confirm.
+            input="\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -710,9 +771,10 @@ def test_confirm_declined_aborts(tmp_path):
 
         result = runner.invoke(
             app, ["--plain", "--puid", "1000", "--pgid", "1000", "--no-start"],
-            # tier, then blank (accept default) for the RAG/voice/n8n
-            # confirms, then "n" declining the final generate confirm.
-            input="light\n\n\n\nn\n"
+            # tier, then blank (accept default) for the RAG/voice/n8n/
+            # litellm/searxng/vane/localai confirms, then "n" declining
+            # the final generate confirm.
+            input="light\n\n\n\n\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -859,9 +921,10 @@ def test_interactive_start_own_orphan_cleans_up_and_retries(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
-            # blank x3 accepts the RAG/voice/n8n confirm defaults, then
-            # "y" starts now and "y" confirms the own-orphan cleanup.
-            input="\n\n\ny\ny\n"
+            # blank x7 accepts the RAG/voice/n8n/litellm/searxng/vane/
+            # localai confirm defaults, then "y" starts now and "y"
+            # confirms the own-orphan cleanup.
+            input="\n\n\n\n\n\n\ny\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -901,9 +964,10 @@ def test_interactive_start_remaps_port_and_retries(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
-            # blank x3 accepts the RAG/voice/n8n confirm defaults, then
-            # "y" starts now and "11500" is the remapped port.
-            input="\n\n\ny\n11500\n"
+            # blank x7 accepts the RAG/voice/n8n/litellm/searxng/vane/
+            # localai confirm defaults, then "y" starts now and "11500"
+            # is the remapped port.
+            input="\n\n\n\n\n\n\ny\n11500\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -941,9 +1005,9 @@ def test_interactive_start_port_conflict_give_up_exits_1(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
-            # blank x3 accepts the RAG/voice/n8n confirm defaults, then
-            # "y" starts now.
-            input="\n\n\ny\n"
+            # blank x7 accepts the RAG/voice/n8n/litellm/searxng/vane/
+            # localai confirm defaults, then "y" starts now.
+            input="\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 1

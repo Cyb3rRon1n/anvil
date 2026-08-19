@@ -699,6 +699,76 @@ def test_write_stack_rag_and_voice_warn_about_manual_open_webui_wiring(tmp_path)
     assert any("Text-to-Speech" in w for w in result["warnings"])
 
 
+def test_write_stack_litellm_searxng_render_and_writes_secret_and_config(tmp_path):
+
+    config = make_config("light", enabled_optional={"litellm", "searxng"})
+    output_dir = tmp_path / "stack"
+    result = write_stack(config, output_dir=output_dir)
+
+    compose = (output_dir / "docker-compose.yml").read_text()
+    assert "litellm:" in compose
+    assert "searxng:" in compose
+
+    secret = (output_dir / ".searxng-secret").read_text().strip()
+    assert secret and f"SEARXNG_SECRET={secret}" in compose
+
+    litellm_config = (output_dir / "config" / "litellm" / "config.yaml").read_text()
+    assert "ollama_chat/llama3.1" in litellm_config
+    assert any("edit" in w and "config.yaml" in w for w in result["warnings"])
+
+    # JSON is real but off by default in SearXNG's own settings.yml -
+    # Vane needs it, so it must be seeded before first boot, not left
+    # to the container's own html-only default.
+    searxng_settings = (output_dir / "data" / "searxng" / "settings.yml").read_text()
+    assert "json" in searxng_settings
+
+
+def test_write_stack_searxng_secret_is_write_once(tmp_path):
+
+    config = make_config("light", enabled_optional={"searxng"})
+    output_dir = tmp_path / "stack"
+
+    write_stack(config, output_dir=output_dir)
+    first = (output_dir / ".searxng-secret").read_text()
+
+    write_stack(config, output_dir=output_dir)
+    second = (output_dir / ".searxng-secret").read_text()
+
+    assert first == second
+
+
+def test_write_stack_vane_auto_enables_searxng_and_warns(tmp_path):
+
+    config = make_config("light", enabled_optional={"vane"})
+    output_dir = tmp_path / "stack"
+    result = write_stack(config, output_dir=output_dir)
+
+    compose = (output_dir / "docker-compose.yml").read_text()
+    assert "vane:" in compose
+    assert "searxng:" in compose
+    assert "searxng" in config.enabled_optional
+    assert any("searxng" in w.lower() and "automatically" in w.lower() for w in result["warnings"])
+    assert any("Vane needs a one-time setup" in w for w in result["warnings"])
+
+
+def test_write_stack_vane_with_searxng_already_requested_doesnt_duplicate_warning(tmp_path):
+
+    config = make_config("light", enabled_optional={"vane", "searxng"})
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("automatically" in w.lower() for w in result["warnings"])
+
+
+def test_write_stack_localai_renders_no_manual_wiring_warning(tmp_path):
+
+    config = make_config("light", enabled_optional={"localai"})
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+    assert "localai:" in compose
+    assert "quay.io/go-skynet/local-ai:v4.8.2" in compose
+
+
 def test_write_stack_creates_data_directories_for_rag_voice_n8n(tmp_path):
 
     config = make_config(

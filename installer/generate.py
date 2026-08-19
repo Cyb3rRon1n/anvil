@@ -16,7 +16,11 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from installer.detect import GpuInfo, detect_host_ip, detect_render_group_gid, port_in_use
-from installer.secrets import N8N_CREDENTIALS_FILENAME, load_or_create_n8n_credentials
+from installer.secrets import (
+    N8N_CREDENTIALS_FILENAME,
+    load_or_create_n8n_credentials,
+    load_or_create_searxng_secret,
+)
 from installer.tiers import TIERS, TierDefinition, enabled_service_keys
 from installer.vulcan_integration import (
     build_homepage_tiles,
@@ -40,8 +44,51 @@ SERVICE_PORTS = {
     # images' own default ports unremapped; whisper's real container
     # default (8000) is remapped to 9000 on the host, matching ODS's
     # own choice, likely to avoid colliding with common dev-tool ports.
-    "qdrant": 6333, "embeddings": 8090, "whisper": 9000, "tts": 8880, "n8n": 5678
+    "qdrant": 6333, "embeddings": 8090, "whisper": 9000, "tts": 8880, "n8n": 5678,
+    # litellm/searxng keep their real image defaults (ODS's own compose,
+    # 4000/8888) unremapped - no collision with anything above. vane's
+    # real container default (3000) collides with open-webui's *host*
+    # port, so it's remapped host-side to 3004, matching the real
+    # default the (renamed) upstream project's own multi-instance docs
+    # use for exactly this reason. localai's real default (8080)
+    # collides with the dashboard's host port, remapped to 8081.
+    "litellm": 4000, "searxng": 8888, "vane": 3004, "localai": 8081
 }
+
+# LiteLLM's real config.yaml syntax, confirmed against its own docs -
+# there's no wildcard/pass-through for "every Ollama model", each has
+# to be a real entry, so this ships exactly one working example (a
+# commonly-pulled model, matching this project's own v0.10 real
+# hardware verification) and tells the user to add more for whatever
+# else they've pulled. Write-once (see write_stack()) so a regenerate
+# never clobbers models the user has already added.
+LITELLM_STARTER_CONFIG = """\
+# Starter config - LiteLLM proxies whatever's listed here.
+# Add a model_list entry for every Ollama model you've pulled
+# (ollama_chat/<name>), plus real API keys for any cloud provider you
+# want routed through the same endpoint. Docs: https://docs.litellm.ai
+model_list:
+  - model_name: llama3.1
+    litellm_params:
+      model: ollama_chat/llama3.1
+      api_base: http://ollama:11434
+"""
+
+# SearXNG's own real, documented override mechanism (use_default_
+# settings: true inherits everything else, only the listed keys
+# change) - confirmed against SearXNG's own repo default settings.yml,
+# not guessed. secret_key is deliberately not set here; the image's
+# own entrypoint already overwrites it from SEARXNG_SECRET regardless
+# (confirmed live: a freshly-bootstrapped settings.yml's own comment
+# reads "Is overwritten by ${SEARXNG_SECRET}").
+SEARXNG_STARTER_SETTINGS = """\
+use_default_settings: true
+search:
+  formats:
+    - html
+    - json
+"""
+
 
 # The dashboard isn't a tiers.py ServiceDefinition (not user-choosable,
 # not tier-gated) - it's always rendered, so its port gets its own
@@ -169,7 +216,8 @@ def _jinja_env() -> Environment:
 
 def render_compose(
     config: GenerationConfig,
-    resolved_ports: dict[str, int] | None = None
+    resolved_ports: dict[str, int] | None = None,
+    searxng_secret: str | None = None
 ) -> str:
 
     template = _jinja_env().get_template("docker-compose.yml.j2")
@@ -184,7 +232,8 @@ def render_compose(
         puid=config.puid,
         pgid=config.pgid,
         render_gid=detect_render_group_gid() if gpu_vendor == "amd" else None,
-        ports=resolved_ports
+        ports=resolved_ports,
+        searxng_secret=searxng_secret
     )
 
 
@@ -203,14 +252,47 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Vane needs SearXNG to function at all - not an optional pairing,
+    # a hard dependency (its own real run instructions require
+    # SEARXNG_API_URL). Auto-enabling here, before enabled_service_keys()
+    # runs, rather than requiring the caller to remember both flags -
+    # every entry point (CLI, menu.sh, direct calls) gets this for free.
+    vane_implied_searxng = "vane" in config.enabled_optional and "searxng" not in config.enabled_optional
+    if vane_implied_searxng:
+        config.enabled_optional.add("searxng")
+
     resolved_ports = resolve_ports(config)
     enabled = enabled_service_keys(config.tier, config.gpu, config.enabled_optional)
 
     n8n_credentials_are_new = "n8n" in enabled and not (output_dir / N8N_CREDENTIALS_FILENAME).exists()
     n8n_credentials = load_or_create_n8n_credentials(output_dir) if "n8n" in enabled else None
 
+    searxng_secret = load_or_create_searxng_secret(output_dir) if "searxng" in enabled else None
+
+    if "searxng" in enabled:
+        # SearXNG's real default settings.yml (confirmed against its
+        # own repo) ships with only "html" active in search.formats -
+        # JSON is real but off by default. Vane needs the JSON API to
+        # get results back at all, so this has to be seeded before the
+        # container's own first-boot bootstrap writes the html-only
+        # default into the mounted volume, not patched after. Written
+        # once, same reasoning as the secret above - a user's own
+        # further settings.yml edits must survive a regenerate.
+        searxng_data_dir = output_dir / "data" / "searxng"
+        searxng_data_dir.mkdir(parents=True, exist_ok=True)
+        searxng_settings_path = searxng_data_dir / "settings.yml"
+        if not searxng_settings_path.exists():
+            searxng_settings_path.write_text(SEARXNG_STARTER_SETTINGS)
+
+    if "litellm" in enabled:
+        litellm_config_dir = output_dir / "config" / "litellm"
+        litellm_config_dir.mkdir(parents=True, exist_ok=True)
+        litellm_config_path = litellm_config_dir / "config.yaml"
+        if not litellm_config_path.exists():
+            litellm_config_path.write_text(LITELLM_STARTER_CONFIG)
+
     compose_path = output_dir / "docker-compose.yml"
-    compose_path.write_text(render_compose(config, resolved_ports))
+    compose_path.write_text(render_compose(config, resolved_ports, searxng_secret))
     save_state(config, output_dir)
 
     for key in enabled:
@@ -390,6 +472,32 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             f"{output_dir}/{N8N_CREDENTIALS_FILENAME} if you need it again):\n"
             f"    Email:    {n8n_credentials['email']}\n"
             f"    Password: {n8n_credentials['password']}"
+        )
+
+    if "litellm" in enabled:
+        warnings.append(
+            "LiteLLM ships a starter config with one working model "
+            f"(Ollama's llama3.1) - edit {output_dir}/config/litellm/config.yaml "
+            "to add more Ollama models you've pulled or real cloud API keys. "
+            "Not wired into Open WebUI automatically - add it as a custom "
+            "OpenAI-compatible connection (Admin Panel > Settings > Connections) "
+            f"pointing at http://litellm:4000 if you want it there too."
+        )
+
+    if vane_implied_searxng:
+        warnings.append(
+            "Vane needs SearXNG to search at all, so --searxng was enabled "
+            "automatically alongside it."
+        )
+
+    if "vane" in enabled:
+        vane_host = detect_host_ip() or "localhost"
+        warnings.append(
+            f"Vane needs a one-time setup at http://{vane_host}:{resolved_ports.get('vane')} "
+            "- API keys and model choice are configured on its own setup screen, "
+            "not a mounted config file (its real current version, confirmed against "
+            "upstream, has no config.toml - that's stale advice from before it was "
+            "renamed from Perplexica)."
         )
 
     for key in enabled:

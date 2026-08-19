@@ -286,7 +286,7 @@ guided_setup() {
 
     # Count how many whiptail steps will actually be shown so we can
     # display [Step N/M] progress on every dialog.
-    local total_steps=7  # tier + puid + pgid + start-now + RAG + Voice + n8n are always shown
+    local total_steps=11  # tier + puid + pgid + start-now + RAG + Voice + n8n + LiteLLM + SearXNG + Vane + LocalAI are always shown
     if [ "$default_tier" = "heavy" ]; then
         case "$GPU_VENDOR" in
             nvidia|amd|intel) total_steps=$((total_steps + 1)) ;;  # ComfyUI
@@ -429,6 +429,83 @@ guided_setup() {
         [ "$n8n_default" = "ON" ] && N8N_FLAG="--n8n"
     fi
 
+    # LiteLLM/SearXNG/Vane/LocalAI default OFF, unlike RAG/voice/n8n
+    # above - see tiers.py's ServiceDefinition comments for why.
+    local LITELLM_FLAG="--no-litellm"
+    local litellm_default="OFF"
+    if [ -n "$PREVIOUS_TIER" ]; then
+        [[ ",$PREVIOUS_ENABLED_OPTIONAL," == *",litellm,"* ]] && litellm_default="ON" || litellm_default="OFF"
+    fi
+    step=$((step + 1))
+    if [ -z "$TESTING" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] LiteLLM" \
+            --checklist "Enable LiteLLM (universal LLM proxy for local + cloud providers)? Ships a starter config with one working Ollama model." \
+            12 76 1 \
+            "litellm" "LiteLLM - one endpoint for local + cloud LLM providers" "$litellm_default" \
+            3>&1 1>&2 2>&3 | grep -q "litellm"; then
+            LITELLM_FLAG="--litellm"
+        fi
+    else
+        [ "$litellm_default" = "ON" ] && LITELLM_FLAG="--litellm"
+    fi
+
+    local SEARXNG_FLAG="--no-searxng"
+    local searxng_default="OFF"
+    if [ -n "$PREVIOUS_TIER" ]; then
+        [[ ",$PREVIOUS_ENABLED_OPTIONAL," == *",searxng,"* ]] && searxng_default="ON" || searxng_default="OFF"
+    fi
+    step=$((step + 1))
+    if [ -z "$TESTING" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] SearXNG" \
+            --checklist "Enable SearXNG (self-hosted metasearch engine)?" \
+            12 76 1 \
+            "searxng" "SearXNG - private metasearch" "$searxng_default" \
+            3>&1 1>&2 2>&3 | grep -q "searxng"; then
+            SEARXNG_FLAG="--searxng"
+        fi
+    else
+        [ "$searxng_default" = "ON" ] && SEARXNG_FLAG="--searxng"
+    fi
+
+    local VANE_FLAG="--no-vane"
+    local vane_default="OFF"
+    if [ -n "$PREVIOUS_TIER" ]; then
+        [[ ",$PREVIOUS_ENABLED_OPTIONAL," == *",vane,"* ]] && vane_default="ON" || vane_default="OFF"
+    fi
+    step=$((step + 1))
+    if [ -z "$TESTING" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] Vane" \
+            --checklist "Enable Vane, formerly Perplexica (AI-powered search)? Needs SearXNG - enabled automatically alongside it if not also checked." \
+            12 76 1 \
+            "vane" "Vane - AI search with cited sources" "$vane_default" \
+            3>&1 1>&2 2>&3 | grep -q "vane"; then
+            VANE_FLAG="--vane"
+        fi
+    else
+        [ "$vane_default" = "ON" ] && VANE_FLAG="--vane"
+    fi
+    # Hard dependency, not just a suggestion - see write_stack()'s own
+    # auto-enable too, this just keeps the printed summary honest.
+    [ "$VANE_FLAG" = "--vane" ] && SEARXNG_FLAG="--searxng"
+
+    local LOCALAI_FLAG="--no-localai"
+    local localai_default="OFF"
+    if [ -n "$PREVIOUS_TIER" ]; then
+        [[ ",$PREVIOUS_ENABLED_OPTIONAL," == *",localai,"* ]] && localai_default="ON" || localai_default="OFF"
+    fi
+    step=$((step + 1))
+    if [ -z "$TESTING" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] LocalAI" \
+            --checklist "Enable LocalAI (OpenAI-compatible multi-modal inference server)?" \
+            12 76 1 \
+            "localai" "LocalAI - broader model format support than Ollama" "$localai_default" \
+            3>&1 1>&2 2>&3 | grep -q "localai"; then
+            LOCALAI_FLAG="--localai"
+        fi
+    else
+        [ "$localai_default" = "ON" ] && LOCALAI_FLAG="--localai"
+    fi
+
     # Only asked when detect_shell() actually found a co-located Vulcan
     # stack (VULCAN_STACK_FOUND/VULCAN_STACK_PATH, sourced above via
     # eval) - no detection logic duplicated here, same as every other
@@ -490,6 +567,10 @@ guided_setup() {
     log_info "RAG: $RAG_FLAG"
     log_info "Voice: $VOICE_FLAG"
     log_info "n8n: $N8N_FLAG"
+    log_info "LiteLLM: $LITELLM_FLAG"
+    log_info "SearXNG: $SEARXNG_FLAG"
+    log_info "Vane: $VANE_FLAG"
+    log_info "LocalAI: $LOCALAI_FLAG"
     log_info "Vulcan integration: $INTEGRATE_VULCAN_FLAG"
     log_info "PUID=$PUID PGID=$PGID"
     log_info "Start: $START_FLAG"
@@ -505,6 +586,10 @@ guided_setup() {
         summary+="RAG:        $([ "$RAG_FLAG" = "--rag" ] && echo "yes" || echo "no")\n"
         summary+="Voice:      $([ "$VOICE_FLAG" = "--voice" ] && echo "yes" || echo "no")\n"
         summary+="n8n:        $([ "$N8N_FLAG" = "--n8n" ] && echo "yes" || echo "no")\n"
+        summary+="LiteLLM:    $([ "$LITELLM_FLAG" = "--litellm" ] && echo "yes" || echo "no")\n"
+        summary+="SearXNG:    $([ "$SEARXNG_FLAG" = "--searxng" ] && echo "yes" || echo "no")\n"
+        summary+="Vane:       $([ "$VANE_FLAG" = "--vane" ] && echo "yes" || echo "no")\n"
+        summary+="LocalAI:    $([ "$LOCALAI_FLAG" = "--localai" ] && echo "yes" || echo "no")\n"
         if [ "${VULCAN_STACK_FOUND:-false}" = "true" ]; then
             summary+="Vulcan:     $([ "$INTEGRATE_VULCAN_FLAG" = "--integrate-vulcan" ] && echo "yes" || echo "no")\n"
         fi
@@ -522,7 +607,8 @@ guided_setup() {
         "$ANVIL_BIN" --non-interactive --yes \
             --tier "$TIER" \
             --puid "$PUID" --pgid "$PGID" \
-            $COMFYUI_FLAG $INVOKEAI_FLAG $RAG_FLAG $VOICE_FLAG $N8N_FLAG $INTEGRATE_VULCAN_FLAG \
+            $COMFYUI_FLAG $INVOKEAI_FLAG $RAG_FLAG $VOICE_FLAG $N8N_FLAG \
+            $LITELLM_FLAG $SEARXNG_FLAG $VANE_FLAG $LOCALAI_FLAG $INTEGRATE_VULCAN_FLAG \
             "$START_FLAG"
     local rc=$?
 

@@ -227,6 +227,16 @@ def test_rag_voice_n8n_available_at_every_tier_regardless_of_gpu_vendor():
             assert requested <= enabled
 
 
+def test_litellm_searxng_vane_localai_available_at_every_tier_regardless_of_gpu_vendor():
+
+    requested = {"litellm", "searxng", "vane", "localai"}
+
+    for tier_name in ("light", "medium", "heavy"):
+        for gpu in (None, GpuInfo(vendor="nvidia", name="fake", vram_total_mb=12288)):
+            enabled = enabled_service_keys(TIERS[tier_name], gpu, requested)
+            assert requested <= enabled
+
+
 def test_rag_voice_n8n_omitted_when_not_requested():
 
     gpu = GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)

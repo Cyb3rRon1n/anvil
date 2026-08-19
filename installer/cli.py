@@ -613,6 +613,22 @@ def main(
         None, "--n8n/--no-n8n",
         help="Include n8n (workflow automation) - any tier, no GPU needed"
     ),
+    litellm: bool | None = typer.Option(
+        None, "--litellm/--no-litellm",
+        help="Include LiteLLM (universal LLM proxy - local + cloud providers) - any tier, no GPU needed, off by default"
+    ),
+    searxng: bool | None = typer.Option(
+        None, "--searxng/--no-searxng",
+        help="Include SearXNG (self-hosted metasearch engine) - any tier, no GPU needed, off by default"
+    ),
+    vane: bool | None = typer.Option(
+        None, "--vane/--no-vane",
+        help="Include Vane, formerly Perplexica (AI-powered search) - needs SearXNG, auto-enabled if not also requested"
+    ),
+    localai: bool | None = typer.Option(
+        None, "--localai/--no-localai",
+        help="Include LocalAI (OpenAI-compatible multi-modal inference server) - any tier, no GPU needed, off by default"
+    ),
     integrate_vulcan: bool | None = typer.Option(
         None, "--integrate-vulcan/--no-integrate-vulcan",
         help="Cross-check ports and add a Homepage section to a co-located Vulcan stack, if one is found"
@@ -631,6 +647,7 @@ def main(
 
     run_install(
         non_interactive, yes, tier, comfyui, invokeai, rag, voice, n8n,
+        litellm, searxng, vane, localai,
         integrate_vulcan, puid, pgid, start
     )
 
@@ -644,6 +661,10 @@ def run_install(
     rag: bool | None,
     voice: bool | None,
     n8n: bool | None,
+    litellm: bool | None,
+    searxng: bool | None,
+    vane: bool | None,
+    localai: bool | None,
     integrate_vulcan: bool | None,
     puid: int | None,
     pgid: int | None,
@@ -850,6 +871,64 @@ def run_install(
     if enable_n8n:
         enabled_optional.add("n8n")
 
+    # LiteLLM/SearXNG/LocalAI default off, unlike RAG/voice/n8n above -
+    # see tiers.py's ServiceDefinition comments for why.
+    litellm_default = "litellm" in previous["enabled_optional"] if previous else False
+
+    if litellm is None:
+        enable_litellm = litellm_default if non_interactive else typer.confirm(
+            "Enable LiteLLM (universal LLM proxy for local + cloud providers)? "
+            "Ships a starter config with one working Ollama model; edit it to add "
+            "more models or cloud API keys.",
+            default=litellm_default
+        )
+    else:
+        enable_litellm = litellm
+
+    if enable_litellm:
+        enabled_optional.add("litellm")
+
+    searxng_default = "searxng" in previous["enabled_optional"] if previous else False
+
+    if searxng is None:
+        enable_searxng = searxng_default if non_interactive else typer.confirm(
+            "Enable SearXNG (self-hosted metasearch engine)?",
+            default=searxng_default
+        )
+    else:
+        enable_searxng = searxng
+
+    vane_default = "vane" in previous["enabled_optional"] if previous else False
+
+    if vane is None:
+        enable_vane = vane_default if non_interactive else typer.confirm(
+            "Enable Vane, formerly Perplexica (AI-powered search)? Needs SearXNG - "
+            "enabled automatically alongside it if not also requested.",
+            default=vane_default
+        )
+    else:
+        enable_vane = vane
+
+    if enable_vane:
+        enabled_optional.add("vane")
+        enable_searxng = True  # hard dependency - see write_stack()'s own auto-enable too
+
+    if enable_searxng:
+        enabled_optional.add("searxng")
+
+    localai_default = "localai" in previous["enabled_optional"] if previous else False
+
+    if localai is None:
+        enable_localai = localai_default if non_interactive else typer.confirm(
+            "Enable LocalAI (OpenAI-compatible multi-modal inference server)?",
+            default=localai_default
+        )
+    else:
+        enable_localai = localai
+
+    if enable_localai:
+        enabled_optional.add("localai")
+
     default_puid, default_pgid = default_puid_pgid()
 
     if previous:
@@ -911,6 +990,10 @@ def run_install(
     console.print(f"  RAG (Qdrant+embeddings): {'enabled' if 'qdrant' in enabled_optional else 'disabled'}")
     console.print(f"  Voice (Whisper+Kokoro): {'enabled' if 'whisper' in enabled_optional else 'disabled'}")
     console.print(f"  n8n: {'enabled' if 'n8n' in enabled_optional else 'disabled'}")
+    console.print(f"  LiteLLM: {'enabled' if 'litellm' in enabled_optional else 'disabled'}")
+    console.print(f"  SearXNG: {'enabled' if 'searxng' in enabled_optional else 'disabled'}")
+    console.print(f"  Vane (Perplexica): {'enabled' if 'vane' in enabled_optional else 'disabled'}")
+    console.print(f"  LocalAI: {'enabled' if 'localai' in enabled_optional else 'disabled'}")
     console.print(
         f"  Vulcan integration: {'enabled (' + str(vulcan_stack_dir) + ')' if vulcan_stack_dir else 'disabled'}"
     )

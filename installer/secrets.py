@@ -45,3 +45,30 @@ def load_or_create_n8n_credentials(output_dir: Path) -> dict:
     credentials = {"email": N8N_DEFAULT_EMAIL, "password": _secrets.token_urlsafe(16)}
     path.write_text(json.dumps(credentials, indent=2))
     return credentials
+
+
+SEARXNG_SECRET_FILENAME = ".searxng-secret"
+
+
+def load_or_create_searxng_secret(output_dir: Path) -> str:
+    """
+    SearXNG's own compose requires SEARXNG_SECRET (":?must be set" in
+    ODS's real config, matching n8n's own now-defunct env vars in
+    shape but real here - SearXNG does read this one, it's a plain
+    Flask session-signing key, not a login credential like n8n's).
+    Write-once for the same reason as n8n's credentials: regenerating
+    it would invalidate every existing session.
+    """
+
+    path = output_dir / SEARXNG_SECRET_FILENAME
+
+    if path.exists():
+
+        try:
+            return path.read_text().strip()
+        except OSError:
+            pass  # unreadable - fall through and regenerate
+
+    secret = _secrets.token_urlsafe(32)
+    path.write_text(secret)
+    return secret

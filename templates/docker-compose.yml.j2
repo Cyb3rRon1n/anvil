@@ -198,6 +198,56 @@ services:
       - "{{ ports.n8n }}:5678"
     restart: unless-stopped
 {% endif %}
+{% if 'litellm' in enabled %}
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.81.3-stable
+    container_name: litellm
+    volumes:
+      - ./config/litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "{{ ports.litellm }}:4000"
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    restart: unless-stopped
+{% endif %}
+{% if 'searxng' in enabled %}
+  searxng:
+    image: searxng/searxng:2026.3.8-a563127a2
+    container_name: searxng
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:{{ ports.searxng }}/
+      - SEARXNG_SECRET={{ searxng_secret }}
+    volumes:
+      - ./data/searxng:/etc/searxng
+    ports:
+      - "{{ ports.searxng }}:8080"
+    restart: unless-stopped
+{% endif %}
+{% if 'vane' in enabled %}
+  vane:
+    image: itzcrazykns1337/vane:slim-latest
+    container_name: vane
+    environment:
+      - SEARXNG_API_URL=http://searxng:8080
+    volumes:
+      - ./data/vane:/home/vane/data
+    ports:
+      - "{{ ports.vane }}:3000"
+    restart: unless-stopped
+{% endif %}
+{% if 'localai' in enabled %}
+  localai:
+    image: quay.io/go-skynet/local-ai:v4.8.2
+    container_name: localai
+    environment:
+      - MODELS_PATH=/models
+      - LOCALAI_VRAM_WARM_LIMIT=0
+    volumes:
+      - ./data/localai/models:/models
+      - ./data/localai/data:/data
+    ports:
+      - "{{ ports.localai }}:8080"
+    restart: unless-stopped
+{% endif %}
   dashboard:
     image: nginx:alpine
     container_name: dashboard
