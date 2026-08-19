@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import pytest
@@ -583,3 +584,177 @@ def test_write_stack_with_port_overrides_dashboard_remapped(tmp_path):
 
     assert '"9000:80"' in compose
     assert '"8080:80"' not in compose
+
+
+# --- RAG/voice/n8n ---
+
+
+def test_write_stack_light_tier_with_rag_renders_qdrant_and_embeddings(tmp_path):
+    """
+    Unlike ComfyUI/InvokeAI, these need no GPU and are available at
+    Light tier - the lowest tier, with no vendor gating at all.
+    """
+
+    config = make_config("light", enabled_optional={"qdrant", "embeddings"})
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "qdrant:" in compose
+    assert "qdrant/qdrant:v1.16.3" in compose
+    assert "embeddings:" in compose
+    assert "text-embeddings-inference:cpu-1.9.1" in compose
+    assert "whisper:" not in compose
+    assert "n8n:" not in compose
+
+
+def test_write_stack_light_tier_with_voice_renders_whisper_and_tts(tmp_path):
+
+    config = make_config("light", enabled_optional={"whisper", "tts"})
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
+
+    assert "whisper:" in compose
+    assert "speaches:0.9.0-rc.3-cpu" in compose
+    assert "tts:" in compose
+    assert "kokoro-fastapi-cpu:v0.2.4" in compose
+
+
+def test_write_stack_n8n_renders_generated_credentials_into_compose(tmp_path):
+
+    config = make_config("light", enabled_optional={"n8n"})
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    output_dir = tmp_path / "stack"
+    compose = (output_dir / "docker-compose.yml").read_text()
+    credentials = json.loads((output_dir / ".n8n-credentials.json").read_text())
+
+    assert f"N8N_DEFAULT_ADMIN_EMAIL={credentials['email']}" in compose
+    assert f"N8N_DEFAULT_ADMIN_PASSWORD={credentials['password']}" in compose
+
+
+def test_write_stack_n8n_regenerates_credentials_if_file_is_corrupt(tmp_path):
+
+    config = make_config("light", enabled_optional={"n8n"})
+    output_dir = tmp_path / "stack"
+    output_dir.mkdir()
+    (output_dir / ".n8n-credentials.json").write_text("not valid json")
+
+    write_stack(config, output_dir=output_dir)
+
+    credentials = json.loads((output_dir / ".n8n-credentials.json").read_text())
+    assert credentials["email"]
+    assert credentials["password"]
+
+
+def test_write_stack_n8n_credentials_are_write_once(tmp_path):
+    """
+    Mirrors Vulcan's generate_authelia_secrets() write-once rule - a
+    regenerate must never invalidate an admin login the user may
+    already be logged into.
+    """
+
+    config = make_config("light", enabled_optional={"n8n"})
+    output_dir = tmp_path / "stack"
+
+    write_stack(config, output_dir=output_dir)
+    first = json.loads((output_dir / ".n8n-credentials.json").read_text())
+
+    write_stack(config, output_dir=output_dir)
+    second = json.loads((output_dir / ".n8n-credentials.json").read_text())
+
+    assert first == second
+
+
+def test_write_stack_n8n_credentials_warning_only_shown_on_first_generate(tmp_path):
+
+    config = make_config("light", enabled_optional={"n8n"})
+    output_dir = tmp_path / "stack"
+
+    first_result = write_stack(config, output_dir=output_dir)
+    second_result = write_stack(config, output_dir=output_dir)
+
+    assert any("n8n admin login" in w for w in first_result["warnings"])
+    assert not any("n8n admin login" in w for w in second_result["warnings"])
+
+
+def test_write_stack_rag_and_voice_warn_about_manual_open_webui_wiring(tmp_path):
+
+    config = make_config("light", enabled_optional={"qdrant", "embeddings", "whisper", "tts"})
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("Documents" in w and "Qdrant" in w for w in result["warnings"])
+    assert any("Speech-to-Text" in w for w in result["warnings"])
+    assert any("Text-to-Speech" in w for w in result["warnings"])
+
+
+def test_write_stack_creates_data_directories_for_rag_voice_n8n(tmp_path):
+
+    config = make_config(
+        "light", enabled_optional={"qdrant", "embeddings", "whisper", "tts", "n8n"}
+    )
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    for key in ("qdrant", "embeddings", "whisper", "tts", "n8n"):
+        assert (tmp_path / "stack" / "data" / key).is_dir()
+
+
+def test_write_stack_vulcan_integration_warns_on_real_port_conflict(tmp_path):
+
+    import yaml
+
+    vulcan_stack = tmp_path / "vulcan" / "stack"
+    vulcan_stack.mkdir(parents=True)
+    (vulcan_stack / ".vulcan-state.json").write_text("{}")
+    (vulcan_stack / "docker-compose.yml").write_text(
+        yaml.safe_dump({"services": {"homepage": {"ports": ["3000:3000"]}}})
+    )
+
+    config = make_config("light", enabled_optional=set())
+    config.vulcan_stack_dir = vulcan_stack
+
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert any("3000" in w and "homepage" in w for w in result["warnings"])
+
+
+def test_write_stack_vulcan_integration_merges_homepage_when_present(tmp_path):
+
+    import yaml
+
+    vulcan_stack = tmp_path / "vulcan" / "stack"
+    homepage_dir = vulcan_stack / "config" / "homepage"
+    homepage_dir.mkdir(parents=True)
+    (vulcan_stack / ".vulcan-state.json").write_text("{}")
+    (vulcan_stack / "docker-compose.yml").write_text(yaml.safe_dump({"services": {}}))
+    (homepage_dir / "services.yaml").write_text(yaml.safe_dump([]))
+
+    config = make_config("light", enabled_optional={"n8n"})
+    config.vulcan_stack_dir = vulcan_stack
+
+    with patch("installer.generate.detect_host_ip", return_value="192.168.1.50"):
+        result = write_stack(config, output_dir=tmp_path / "stack")
+
+    merged = yaml.safe_load((homepage_dir / "services.yaml").read_text())
+    assert any("Creative Suite" in list(g.keys())[0] for g in merged)
+    assert any("Added a Homepage section" in w for w in result["warnings"])
+
+
+def test_write_stack_no_vulcan_integration_when_dir_not_set(tmp_path):
+
+    config = make_config("light", enabled_optional=set())
+    result = write_stack(config, output_dir=tmp_path / "stack")
+
+    assert not any("Vulcan" in w or "Homepage section" in w for w in result["warnings"])
+
+
+def test_render_stack_summary_includes_rag_voice_n8n_urls():
+
+    config = make_config("light", enabled_optional={"qdrant", "whisper", "tts", "n8n"})
+    summary = render_stack_summary(config, host_ip="192.168.1.50")
+
+    assert "http://192.168.1.50:6333/dashboard" in summary
+    assert "http://192.168.1.50:9000" in summary
+    assert "http://192.168.1.50:8880" in summary
+    assert "http://192.168.1.50:5678" in summary

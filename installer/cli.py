@@ -38,6 +38,7 @@ from installer.post_install import (
 )
 from installer.preflight import check_ports_available, format_port_conflicts
 from installer.tiers import TIERS, recommend_tier
+from installer.vulcan_integration import find_vulcan_stack
 
 
 app = typer.Typer(
@@ -82,6 +83,8 @@ def detect_shell():
 
     default_puid, default_pgid = default_puid_pgid()
 
+    vulcan_stack_dir = find_vulcan_stack()
+
     gpu_vendor = ""
     gpu_vram_mb = 0
     gpu_name = ""
@@ -115,6 +118,8 @@ def detect_shell():
         "PREVIOUS_ENABLED_OPTIONAL": ",".join(previous["enabled_optional"]) if previous else "",
         "PREVIOUS_GPU_VENDOR": (previous.get("gpu_vendor") or "") if previous else "",
         "PREVIOUS_GENERATED_AT": (previous.get("generated_at") or "") if previous else "",
+        "VULCAN_STACK_FOUND": "true" if vulcan_stack_dir else "false",
+        "VULCAN_STACK_PATH": _shell_quote(str(vulcan_stack_dir) if vulcan_stack_dir else ""),
     }
 
     for key, value in fields.items():
@@ -596,6 +601,22 @@ def main(
         None, "--invokeai/--no-invokeai",
         help="Include InvokeAI (turnkey image generation) - only offered at Heavy tier on NVIDIA/AMD GPUs"
     ),
+    rag: bool | None = typer.Option(
+        None, "--rag/--no-rag",
+        help="Include Qdrant + a text-embeddings service, for Open WebUI's document retrieval - any tier, no GPU needed"
+    ),
+    voice: bool | None = typer.Option(
+        None, "--voice/--no-voice",
+        help="Include Whisper (speech-to-text) + Kokoro (text-to-speech), for Open WebUI's voice features - any tier, no GPU needed"
+    ),
+    n8n: bool | None = typer.Option(
+        None, "--n8n/--no-n8n",
+        help="Include n8n (workflow automation) - any tier, no GPU needed"
+    ),
+    integrate_vulcan: bool | None = typer.Option(
+        None, "--integrate-vulcan/--no-integrate-vulcan",
+        help="Cross-check ports and add a Homepage section to a co-located Vulcan stack, if one is found"
+    ),
     puid: int | None = typer.Option(None, "--puid"),
     pgid: int | None = typer.Option(None, "--pgid"),
     start: bool | None = typer.Option(None, "--start/--no-start"),
@@ -608,7 +629,10 @@ def main(
 
         raise typer.Exit(code=_launch_menu())
 
-    run_install(non_interactive, yes, tier, comfyui, invokeai, puid, pgid, start)
+    run_install(
+        non_interactive, yes, tier, comfyui, invokeai, rag, voice, n8n,
+        integrate_vulcan, puid, pgid, start
+    )
 
 
 def run_install(
@@ -617,6 +641,10 @@ def run_install(
     tier_override: str | None,
     comfyui: bool | None,
     invokeai: bool | None,
+    rag: bool | None,
+    voice: bool | None,
+    n8n: bool | None,
+    integrate_vulcan: bool | None,
     puid: int | None,
     pgid: int | None,
     start: bool | None
@@ -771,6 +799,57 @@ def run_install(
         if enable_invokeai:
             enabled_optional.add("invokeai")
 
+    # RAG/voice/n8n are CPU-only and vendor-agnostic - offered at every
+    # tier, unlike ComfyUI/InvokeAI above which need real GPU compute
+    # and are gated to Heavy. Same previous-state-aware, defaults-on
+    # pattern (nothing here is ever "unsupported" the way GPU vendor
+    # gating can make ComfyUI/InvokeAI unsupported).
+    rag_default = "qdrant" in previous["enabled_optional"] if previous else True
+
+    if rag is None:
+        enable_rag = rag_default if non_interactive else typer.confirm(
+            "Enable RAG (Qdrant + a text-embeddings service)? Lets Open WebUI retrieve "
+            "answers from documents you upload - needs a one-time admin-panel setting "
+            "after first start (see the printed warning).",
+            default=rag_default
+        )
+    else:
+        enable_rag = rag
+
+    if enable_rag:
+        enabled_optional.add("qdrant")
+        enabled_optional.add("embeddings")
+
+    voice_default = "whisper" in previous["enabled_optional"] if previous else True
+
+    if voice is None:
+        enable_voice = voice_default if non_interactive else typer.confirm(
+            "Enable voice (Whisper speech-to-text + Kokoro text-to-speech)? Needs a "
+            "one-time admin-panel setting in Open WebUI after first start (see the "
+            "printed warning).",
+            default=voice_default
+        )
+    else:
+        enable_voice = voice
+
+    if enable_voice:
+        enabled_optional.add("whisper")
+        enabled_optional.add("tts")
+
+    n8n_default = "n8n" in previous["enabled_optional"] if previous else True
+
+    if n8n is None:
+        enable_n8n = n8n_default if non_interactive else typer.confirm(
+            "Enable n8n (workflow automation)? A random admin password is generated "
+            "once and printed after first start.",
+            default=n8n_default
+        )
+    else:
+        enable_n8n = n8n
+
+    if enable_n8n:
+        enabled_optional.add("n8n")
+
     default_puid, default_pgid = default_puid_pgid()
 
     if previous:
@@ -787,12 +866,39 @@ def run_install(
     else:
         final_pgid = pgid
 
+    # A genuinely new blast-radius category - the only place Anvil
+    # ever writes outside its own stack/ - so this stays a real,
+    # visible confirm rather than a silent default-on, even though the
+    # write itself is safe (additive, one named group, never touches
+    # anything else in the file). Silent when nothing is found at all -
+    # the whole point is standalone-by-default when no Vulcan/homelab
+    # is present.
+    vulcan_found = find_vulcan_stack()
+    vulcan_stack_dir = None
+
+    if vulcan_found is not None:
+
+        if integrate_vulcan is None:
+
+            decided = True if non_interactive else typer.confirm(
+                f"Found a Vulcan stack at {vulcan_found} - cross-check ports and add a "
+                "Homepage section for Anvil's enabled services?",
+                default=True
+            )
+
+        else:
+            decided = integrate_vulcan
+
+        if decided:
+            vulcan_stack_dir = vulcan_found
+
     config = GenerationConfig(
         tier=chosen_tier,
         puid=final_puid,
         pgid=final_pgid,
         gpu=gpu,
-        enabled_optional=enabled_optional
+        enabled_optional=enabled_optional,
+        vulcan_stack_dir=vulcan_stack_dir
     )
 
     console.print("\n[bold]Review[/bold]")
@@ -802,6 +908,12 @@ def run_install(
     console.print(f"  PUID/PGID: {final_puid}/{final_pgid}")
     console.print(f"  ComfyUI: {'enabled' if 'comfyui' in enabled_optional else 'disabled'}")
     console.print(f"  InvokeAI: {'enabled' if 'invokeai' in enabled_optional else 'disabled'}")
+    console.print(f"  RAG (Qdrant+embeddings): {'enabled' if 'qdrant' in enabled_optional else 'disabled'}")
+    console.print(f"  Voice (Whisper+Kokoro): {'enabled' if 'whisper' in enabled_optional else 'disabled'}")
+    console.print(f"  n8n: {'enabled' if 'n8n' in enabled_optional else 'disabled'}")
+    console.print(
+        f"  Vulcan integration: {'enabled (' + str(vulcan_stack_dir) + ')' if vulcan_stack_dir else 'disabled'}"
+    )
 
     compose_exists = (STACK_DIR / "docker-compose.yml").exists()
 

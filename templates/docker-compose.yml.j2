@@ -138,6 +138,68 @@ services:
       - "{{ ports.invokeai }}:9090"
     restart: unless-stopped
 {% endif %}
+{% if 'qdrant' in enabled %}
+  qdrant:
+    image: qdrant/qdrant:v1.16.3
+    container_name: qdrant
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    ports:
+      - "{{ ports.qdrant }}:6333"
+    restart: unless-stopped
+{% endif %}
+{% if 'embeddings' in enabled %}
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.1
+    platform: linux/amd64
+    container_name: embeddings
+    environment:
+      - MODEL_ID=BAAI/bge-base-en-v1.5
+    volumes:
+      - ./data/embeddings:/data
+    ports:
+      - "{{ ports.embeddings }}:80"
+    restart: unless-stopped
+{% endif %}
+{% if 'whisper' in enabled %}
+  whisper:
+    image: ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu
+    container_name: whisper
+    volumes:
+      - ./data/whisper:/home/ubuntu/.cache/huggingface/hub
+    ports:
+      - "{{ ports.whisper }}:8000"
+    restart: unless-stopped
+{% endif %}
+{% if 'tts' in enabled %}
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
+    container_name: tts
+    environment:
+      - DEFAULT_VOICE=af_heart
+    ports:
+      - "{{ ports.tts }}:8880"
+    restart: unless-stopped
+{% endif %}
+{% if 'n8n' in enabled %}
+  n8n:
+    image: n8nio/n8n:2.6.4
+    container_name: n8n
+    user: "{{ puid }}:{{ pgid }}"
+    environment:
+      - N8N_DEFAULT_ADMIN_EMAIL={{ n8n_email }}
+      - N8N_DEFAULT_ADMIN_PASSWORD={{ n8n_password }}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:{{ ports.n8n }}
+      - GENERIC_TIMEZONE=UTC
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+    ports:
+      - "{{ ports.n8n }}:5678"
+    restart: unless-stopped
+{% endif %}
   dashboard:
     image: nginx:alpine
     container_name: dashboard

@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from installer.cli import app
@@ -8,6 +9,24 @@ from installer.detect import GpuInfo, SystemInfo
 
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def no_real_vulcan_stack():
+    """
+    find_vulcan_stack()'s real default search path is a sibling
+    "vulcan" directory - exactly what this exact dev workspace has for
+    real (anvil/ and vulcan/ as sibling repos), so an unmocked test
+    here would silently pick up the real Vulcan stack generated while
+    building this feature and inject an extra interactive confirm
+    prompt into every test that doesn't expect it - the same class of
+    ambient-real-state leak this project has hit before (the stray
+    .anvil-state.json, the real bound port 11434). Tests that actually
+    exercise Vulcan integration override this with their own patch.
+    """
+
+    with patch("installer.cli.find_vulcan_stack", return_value=None):
+        yield
 
 
 def make_system_info(**overrides) -> SystemInfo:
@@ -39,6 +58,12 @@ READY_WRITE_RESULT = {
     "compose_path": "/scratch/stack/docker-compose.yml",
     "warnings": []
 }
+
+# RAG/voice/n8n are CPU-only and vendor-agnostic - a fresh
+# non-interactive run defaults all five keys on regardless of tier or
+# GPU vendor, unioned into every comfyui/invokeai-focused expectation
+# below so those tests stay about what they're actually testing.
+CPU_ONLY_DEFAULTS = {"qdrant", "embeddings", "whisper", "tts", "n8n"}
 
 
 def test_urls_shell_prints_real_service_urls_from_saved_state(tmp_path):
@@ -364,7 +389,7 @@ def test_non_interactive_medium_gpu_writes_stack_without_comfyui(tmp_path):
 
     config = mock_write_stack.call_args[0][0]
     assert config.tier.name == "medium"
-    assert config.enabled_optional == set()
+    assert config.enabled_optional == CPU_ONLY_DEFAULTS
 
 
 def test_non_interactive_heavy_nvidia_with_comfyui_flag_enables_it(tmp_path):
@@ -388,7 +413,7 @@ def test_non_interactive_heavy_nvidia_with_comfyui_flag_enables_it(tmp_path):
     # invokeai is also NVIDIA-supported and real like comfyui, so a
     # fresh non-interactive run defaults it on too - not requested via
     # flag here, just the same "supported hardware defaults on" rule.
-    assert config.enabled_optional == {"comfyui", "invokeai"}
+    assert config.enabled_optional == {"comfyui", "invokeai"} | CPU_ONLY_DEFAULTS
 
 
 def test_non_interactive_heavy_amd_defaults_comfyui_on(tmp_path):
@@ -412,7 +437,7 @@ def test_non_interactive_heavy_amd_defaults_comfyui_on(tmp_path):
 
     config = mock_write_stack.call_args[0][0]
     # invokeai also has a real, official AMD image - defaults on too.
-    assert config.enabled_optional == {"comfyui", "invokeai"}
+    assert config.enabled_optional == {"comfyui", "invokeai"} | CPU_ONLY_DEFAULTS
 
 
 def test_non_interactive_heavy_intel_defaults_comfyui_on(tmp_path):
@@ -435,7 +460,7 @@ def test_non_interactive_heavy_intel_defaults_comfyui_on(tmp_path):
     assert result.exit_code == 0, result.output
 
     config = mock_write_stack.call_args[0][0]
-    assert config.enabled_optional == {"comfyui"}
+    assert config.enabled_optional == {"comfyui"} | CPU_ONLY_DEFAULTS
 
 
 def test_non_interactive_heavy_intel_never_enables_invokeai(tmp_path):
@@ -458,7 +483,7 @@ def test_non_interactive_heavy_intel_never_enables_invokeai(tmp_path):
     assert result.exit_code == 0, result.output
 
     config = mock_write_stack.call_args[0][0]
-    assert config.enabled_optional == {"comfyui"}
+    assert config.enabled_optional == {"comfyui"} | CPU_ONLY_DEFAULTS
     assert "invokeai" not in config.enabled_optional
 
 
@@ -479,7 +504,162 @@ def test_non_interactive_heavy_amd_with_no_invokeai_flag_disables_it(tmp_path):
     assert result.exit_code == 0, result.output
 
     config = mock_write_stack.call_args[0][0]
-    assert config.enabled_optional == {"comfyui"}
+    assert config.enabled_optional == {"comfyui"} | CPU_ONLY_DEFAULTS
+
+
+def test_non_interactive_light_tier_with_no_rag_no_voice_no_n8n_flags(tmp_path):
+    """
+    Unlike comfyui/invokeai (which need Heavy + a supported GPU vendor
+    to even be offered), rag/voice/n8n are offered - and default on -
+    at every tier including Light, regardless of GPU vendor. recommend_
+    tier() is mocked here to isolate that enablement logic - a real
+    fully GPU-less host can't reach Light at all yet (run_install()
+    exits before offering anything when recommend_tier() returns no
+    tier), a real, separately-tracked gap since RAG/voice/n8n
+    themselves need no GPU - see CLAUDE.md's "RAG + voice + n8n" entry.
+    """
+
+    info = make_system_info(gpus=[])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.recommend_tier"
+    ) as mock_recommend, patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        from installer.tiers import TIERS, Recommendation
+        mock_recommend.return_value = Recommendation(tier=TIERS["light"], gpu=None, explanation="test")
+
+        result = runner.invoke(
+            app,
+            ["--non-interactive", "--yes", "--no-start", "--no-rag", "--no-voice", "--no-n8n"]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.tier.name == "light"
+    assert config.enabled_optional == set()
+
+
+def test_non_interactive_light_tier_defaults_rag_voice_n8n_on(tmp_path):
+
+    info = make_system_info(gpus=[])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.recommend_tier"
+    ) as mock_recommend, patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        from installer.tiers import TIERS, Recommendation
+        mock_recommend.return_value = Recommendation(tier=TIERS["light"], gpu=None, explanation="test")
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.enabled_optional == CPU_ONLY_DEFAULTS
+
+
+def test_non_interactive_defaults_vulcan_integration_on_when_found(tmp_path):
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
+    fake_vulcan_stack = tmp_path / "vulcan-stack"
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.find_vulcan_stack", return_value=fake_vulcan_stack
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.vulcan_stack_dir == fake_vulcan_stack
+
+
+def test_non_interactive_no_integrate_vulcan_flag_disables_it(tmp_path):
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
+    fake_vulcan_stack = tmp_path / "vulcan-stack"
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.find_vulcan_stack", return_value=fake_vulcan_stack
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app, ["--non-interactive", "--yes", "--no-start", "--no-integrate-vulcan"]
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.vulcan_stack_dir is None
+
+
+def test_no_vulcan_found_leaves_vulcan_stack_dir_none(tmp_path):
+    """
+    The standalone-by-default case - no prompt, no flag needed, no
+    behavior change from before this feature existed.
+    """
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.find_vulcan_stack", return_value=None
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.vulcan_stack_dir is None
+
+
+def test_interactive_declines_vulcan_integration_when_found(tmp_path):
+
+    info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
+    fake_vulcan_stack = tmp_path / "vulcan-stack"
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.find_vulcan_stack", return_value=fake_vulcan_stack
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
+
+        result = runner.invoke(
+            app,
+            ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000", "--no-start"],
+            # blank x3 accepts RAG/voice/n8n defaults, "n" declines the
+            # Vulcan integration confirm.
+            input="\n\n\nn\n"
+        )
+
+    assert result.exit_code == 0, result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.vulcan_stack_dir is None
 
 
 def test_non_interactive_rerun_reuses_previous_tier_and_comfyui_choice(tmp_path):
@@ -512,6 +692,9 @@ def test_non_interactive_rerun_reuses_previous_tier_and_comfyui_choice(tmp_path)
 
     config = mock_write_stack.call_args[0][0]
     assert config.tier.name == "heavy"
+    # Previous state has no rag/voice/n8n keys recorded, so - like
+    # comfyui's own previous-choice-reuse behavior - they default off
+    # here rather than falling back to the fresh-run "defaults on" rule.
     assert config.enabled_optional == {"comfyui"}
 
 
@@ -526,7 +709,10 @@ def test_confirm_declined_aborts(tmp_path):
     ) as mock_write_stack:
 
         result = runner.invoke(
-            app, ["--plain", "--puid", "1000", "--pgid", "1000", "--no-start"], input="light\nn\n"
+            app, ["--plain", "--puid", "1000", "--pgid", "1000", "--no-start"],
+            # tier, then blank (accept default) for the RAG/voice/n8n
+            # confirms, then "n" declining the final generate confirm.
+            input="light\n\n\n\nn\n"
         )
 
     assert result.exit_code == 0
@@ -673,7 +859,9 @@ def test_interactive_start_own_orphan_cleans_up_and_retries(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
-            input="y\ny\n"
+            # blank x3 accepts the RAG/voice/n8n confirm defaults, then
+            # "y" starts now and "y" confirms the own-orphan cleanup.
+            input="\n\n\ny\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -713,7 +901,9 @@ def test_interactive_start_remaps_port_and_retries(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
-            input="y\n11500\n"
+            # blank x3 accepts the RAG/voice/n8n confirm defaults, then
+            # "y" starts now and "11500" is the remapped port.
+            input="\n\n\ny\n11500\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -751,7 +941,9 @@ def test_interactive_start_port_conflict_give_up_exits_1(tmp_path):
         result = runner.invoke(
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
-            input="y\n"
+            # blank x3 accepts the RAG/voice/n8n confirm defaults, then
+            # "y" starts now.
+            input="\n\n\ny\n"
         )
 
     assert result.exit_code == 1

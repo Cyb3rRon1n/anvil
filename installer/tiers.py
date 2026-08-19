@@ -51,6 +51,17 @@ class TierDefinition:
 _LIGHT_SERVICES = [
     ServiceDefinition("ollama", "Ollama (local LLM runtime)"),
     ServiceDefinition("open-webui", "Open WebUI (chat interface)"),
+    # RAG, voice, and n8n are CPU-only and vendor-agnostic - no
+    # vendor_restrictions, and offered at every tier including Light,
+    # unlike ComfyUI/InvokeAI which need real GPU compute. Image/env
+    # choices sourced from Osmantic/ODS's own real, already-running
+    # compose definitions (Apache-2.0) rather than re-researched from
+    # scratch - see CLAUDE.md's "RAG + voice + n8n" entry.
+    ServiceDefinition("qdrant", "Qdrant (vector database for RAG)", optional=True),
+    ServiceDefinition("embeddings", "Text Embeddings Inference (RAG embedding model)", optional=True),
+    ServiceDefinition("whisper", "Whisper via speaches (speech-to-text)", optional=True),
+    ServiceDefinition("tts", "Kokoro (text-to-speech)", optional=True),
+    ServiceDefinition("n8n", "n8n (workflow automation)", optional=True),
 ]
 
 _MEDIUM_SERVICES = list(_LIGHT_SERVICES)

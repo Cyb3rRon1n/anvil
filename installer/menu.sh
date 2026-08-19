@@ -291,7 +291,7 @@ guided_setup() {
 
     # Count how many whiptail steps will actually be shown so we can
     # display [Step N/M] progress on every dialog.
-    local total_steps=4  # tier + puid + pgid + start-now are always shown
+    local total_steps=7  # tier + puid + pgid + start-now + RAG + Voice + n8n are always shown
     if [ "$default_tier" = "heavy" ]; then
         case "$GPU_VENDOR" in
             nvidia|amd|intel) total_steps=$((total_steps + 1)) ;;  # ComfyUI
@@ -300,6 +300,7 @@ guided_setup() {
             nvidia|amd) total_steps=$((total_steps + 1)) ;;        # InvokeAI
         esac
     fi
+    [ "${VULCAN_STACK_FOUND:-false}" = "true" ] && total_steps=$((total_steps + 1))  # Vulcan integration confirm
     local step=0
 
     step=$((step + 1))
@@ -376,6 +377,83 @@ guided_setup() {
 
     fi
 
+    # RAG/voice/n8n are CPU-only and vendor-agnostic - offered at every
+    # tier, unlike ComfyUI/InvokeAI above which are gated to Heavy and
+    # GPU vendor. Same previous-state-aware, defaults-on pattern.
+    local RAG_FLAG="--no-rag"
+    local rag_default="ON"
+    if [ -n "$PREVIOUS_TIER" ]; then
+        [[ ",$PREVIOUS_ENABLED_OPTIONAL," == *",qdrant,"* ]] && rag_default="ON" || rag_default="OFF"
+    fi
+    step=$((step + 1))
+    if [ -z "$TESTING" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] RAG" \
+            --checklist "Enable RAG (Qdrant + a text-embeddings service)? Lets Open WebUI retrieve answers from documents you upload - needs a one-time admin-panel setting after first start." \
+            12 76 1 \
+            "rag" "Qdrant + embeddings - document retrieval for Open WebUI" "$rag_default" \
+            3>&1 1>&2 2>&3 | grep -q "rag"; then
+            RAG_FLAG="--rag"
+        fi
+    else
+        [ "$rag_default" = "ON" ] && RAG_FLAG="--rag"
+    fi
+
+    local VOICE_FLAG="--no-voice"
+    local voice_default="ON"
+    if [ -n "$PREVIOUS_TIER" ]; then
+        [[ ",$PREVIOUS_ENABLED_OPTIONAL," == *",whisper,"* ]] && voice_default="ON" || voice_default="OFF"
+    fi
+    step=$((step + 1))
+    if [ -z "$TESTING" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] Voice" \
+            --checklist "Enable voice (Whisper speech-to-text + Kokoro text-to-speech)? Needs a one-time admin-panel setting in Open WebUI after first start." \
+            12 76 1 \
+            "voice" "Whisper + Kokoro - voice input/output for Open WebUI" "$voice_default" \
+            3>&1 1>&2 2>&3 | grep -q "voice"; then
+            VOICE_FLAG="--voice"
+        fi
+    else
+        [ "$voice_default" = "ON" ] && VOICE_FLAG="--voice"
+    fi
+
+    local N8N_FLAG="--no-n8n"
+    local n8n_default="ON"
+    if [ -n "$PREVIOUS_TIER" ]; then
+        [[ ",$PREVIOUS_ENABLED_OPTIONAL," == *",n8n,"* ]] && n8n_default="ON" || n8n_default="OFF"
+    fi
+    step=$((step + 1))
+    if [ -z "$TESTING" ]; then
+        if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] n8n" \
+            --checklist "Enable n8n (workflow automation)? A random admin password is generated once and printed after first start." \
+            12 76 1 \
+            "n8n" "n8n - visual workflow automation" "$n8n_default" \
+            3>&1 1>&2 2>&3 | grep -q "n8n"; then
+            N8N_FLAG="--n8n"
+        fi
+    else
+        [ "$n8n_default" = "ON" ] && N8N_FLAG="--n8n"
+    fi
+
+    # Only asked when detect_shell() actually found a co-located Vulcan
+    # stack (VULCAN_STACK_FOUND/VULCAN_STACK_PATH, sourced above via
+    # eval) - no detection logic duplicated here, same as every other
+    # step in this file. Silent (no step at all) when nothing is found,
+    # matching the standalone-by-default requirement.
+    local INTEGRATE_VULCAN_FLAG="--no-integrate-vulcan"
+    if [ "${VULCAN_STACK_FOUND:-false}" = "true" ]; then
+
+        step=$((step + 1))
+        if [ -z "$TESTING" ]; then
+            if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] Vulcan Integration" \
+                --yesno "Found a Vulcan stack at ${VULCAN_STACK_PATH:-} - cross-check ports and add a Homepage section for Anvil's enabled services?" \
+                10 76; then
+                INTEGRATE_VULCAN_FLAG="--integrate-vulcan"
+            fi
+        else
+            INTEGRATE_VULCAN_FLAG="--integrate-vulcan"
+        fi
+    fi
+
     local default_puid_value="$DEFAULT_PUID"
     local default_pgid_value="$DEFAULT_PGID"
 
@@ -414,6 +492,10 @@ guided_setup() {
     log_info "Selected tier: $TIER"
     log_info "ComfyUI: $COMFYUI_FLAG"
     log_info "InvokeAI: $INVOKEAI_FLAG"
+    log_info "RAG: $RAG_FLAG"
+    log_info "Voice: $VOICE_FLAG"
+    log_info "n8n: $N8N_FLAG"
+    log_info "Vulcan integration: $INTEGRATE_VULCAN_FLAG"
     log_info "PUID=$PUID PGID=$PGID"
     log_info "Start: $START_FLAG"
 
@@ -425,6 +507,12 @@ guided_setup() {
         summary+="PUID/PGID:  $PUID / $PGID\n"
         summary+="ComfyUI:    $([ "$COMFYUI_FLAG" = "--comfyui" ] && echo "yes" || echo "no")\n"
         summary+="InvokeAI:   $([ "$INVOKEAI_FLAG" = "--invokeai" ] && echo "yes" || echo "no")\n"
+        summary+="RAG:        $([ "$RAG_FLAG" = "--rag" ] && echo "yes" || echo "no")\n"
+        summary+="Voice:      $([ "$VOICE_FLAG" = "--voice" ] && echo "yes" || echo "no")\n"
+        summary+="n8n:        $([ "$N8N_FLAG" = "--n8n" ] && echo "yes" || echo "no")\n"
+        if [ "${VULCAN_STACK_FOUND:-false}" = "true" ]; then
+            summary+="Vulcan:     $([ "$INTEGRATE_VULCAN_FLAG" = "--integrate-vulcan" ] && echo "yes" || echo "no")\n"
+        fi
         summary+="Auto-start: $([ "$START_FLAG" = "--start" ] && echo "yes" || echo "no")\n"
         summary+="\nPress TAB to select yes or no."
 
@@ -439,7 +527,7 @@ guided_setup() {
         "$ANVIL_BIN" --non-interactive --yes \
             --tier "$TIER" \
             --puid "$PUID" --pgid "$PGID" \
-            $COMFYUI_FLAG $INVOKEAI_FLAG \
+            $COMFYUI_FLAG $INVOKEAI_FLAG $RAG_FLAG $VOICE_FLAG $N8N_FLAG $INTEGRATE_VULCAN_FLAG \
             "$START_FLAG"
     local rc=$?
 
@@ -514,6 +602,18 @@ view_status() {
     fi
     if grep -q "invokeai" "$compose_file" 2>/dev/null; then
         status_text+="InvokeAI:   http://localhost:9090\n"
+    fi
+    if grep -q "qdrant" "$compose_file" 2>/dev/null; then
+        status_text+="Qdrant:     http://localhost:6333/dashboard\n"
+    fi
+    if grep -q "  whisper:" "$compose_file" 2>/dev/null; then
+        status_text+="Whisper:    http://localhost:9000\n"
+    fi
+    if grep -q "  tts:" "$compose_file" 2>/dev/null; then
+        status_text+="Kokoro TTS: http://localhost:8880\n"
+    fi
+    if grep -q "  n8n:" "$compose_file" 2>/dev/null; then
+        status_text+="n8n:        http://localhost:5678\n"
     fi
     if grep -q "dashboard" "$compose_file" 2>/dev/null; then
         status_text+="Dashboard:  http://localhost:8080\n"

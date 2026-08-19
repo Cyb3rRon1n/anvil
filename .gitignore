@@ -5,6 +5,9 @@
 # Generated stack output, once this exists - never committed here.
 stack/
 
+# Local-only reference clone of another project (ODS) for research - not our code, not committed.
+.reference-ODS/
+
 # Model weights - large, never committed here.
 models/
 

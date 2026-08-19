@@ -16,7 +16,13 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from installer.detect import GpuInfo, detect_host_ip, detect_render_group_gid, port_in_use
+from installer.secrets import N8N_CREDENTIALS_FILENAME, load_or_create_n8n_credentials
 from installer.tiers import TIERS, TierDefinition, enabled_service_keys
+from installer.vulcan_integration import (
+    build_homepage_tiles,
+    check_vulcan_port_conflicts,
+    merge_into_vulcan_homepage,
+)
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -27,7 +33,15 @@ STATE_FILENAME = ".anvil-state.json"
 # mirrors the hardcoded "ports:" values in docker-compose.yml.j2,
 # same convention as the vendor-specific knowledge already hardcoded
 # below for the NVIDIA Container Toolkit warning.
-SERVICE_PORTS = {"ollama": 11434, "open-webui": 3000, "comfyui": 8188, "invokeai": 9090}
+SERVICE_PORTS = {
+    "ollama": 11434, "open-webui": 3000, "comfyui": 8188, "invokeai": 9090,
+    # Real defaults, sourced from ODS's own already-running compose
+    # definitions rather than guessed - qdrant/tts/n8n keep their
+    # images' own default ports unremapped; whisper's real container
+    # default (8000) is remapped to 9000 on the host, matching ODS's
+    # own choice, likely to avoid colliding with common dev-tool ports.
+    "qdrant": 6333, "embeddings": 8090, "whisper": 9000, "tts": 8880, "n8n": 5678
+}
 
 # The dashboard isn't a tiers.py ServiceDefinition (not user-choosable,
 # not tier-gated) - it's always rendered, so its port gets its own
@@ -45,6 +59,11 @@ class GenerationConfig:
     gpu: GpuInfo | None = None
     enabled_optional: set[str] = field(default_factory=set)
     port_overrides: dict[str, int] = field(default_factory=dict)
+    # Set by the CLI/menu layer after find_vulcan_stack() + user
+    # confirmation - None means "no co-located Vulcan install, or the
+    # user didn't want to integrate with it," Anvil's own standalone
+    # dashboard is unaffected either way.
+    vulcan_stack_dir: Path | None = None
 
 
 def default_puid_pgid() -> tuple[int, int]:
@@ -92,6 +111,18 @@ def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
     if "invokeai" in config.enabled_optional:
         lines.append(f"  InvokeAI:     http://{host}:{resolved['invokeai']}")
 
+    if "qdrant" in config.enabled_optional:
+        lines.append(f"  Qdrant:       http://{host}:{resolved['qdrant']}/dashboard")
+
+    if "whisper" in config.enabled_optional:
+        lines.append(f"  Whisper STT:  http://{host}:{resolved['whisper']}")
+
+    if "tts" in config.enabled_optional:
+        lines.append(f"  Kokoro TTS:   http://{host}:{resolved['tts']}")
+
+    if "n8n" in config.enabled_optional:
+        lines.append(f"  n8n:          http://{host}:{resolved['n8n']}")
+
     return "\n".join(lines)
 
 
@@ -136,7 +167,11 @@ def _jinja_env() -> Environment:
     )
 
 
-def render_compose(config: GenerationConfig, resolved_ports: dict[str, int] | None = None) -> str:
+def render_compose(
+    config: GenerationConfig,
+    resolved_ports: dict[str, int] | None = None,
+    n8n_credentials: dict | None = None
+) -> str:
 
     template = _jinja_env().get_template("docker-compose.yml.j2")
     gpu_vendor = config.gpu.vendor if config.gpu else None
@@ -150,7 +185,9 @@ def render_compose(config: GenerationConfig, resolved_ports: dict[str, int] | No
         puid=config.puid,
         pgid=config.pgid,
         render_gid=detect_render_group_gid() if gpu_vendor == "amd" else None,
-        ports=resolved_ports
+        ports=resolved_ports,
+        n8n_email=n8n_credentials["email"] if n8n_credentials else None,
+        n8n_password=n8n_credentials["password"] if n8n_credentials else None
     )
 
 
@@ -170,12 +207,14 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     resolved_ports = resolve_ports(config)
+    enabled = enabled_service_keys(config.tier, config.gpu, config.enabled_optional)
+
+    n8n_credentials_are_new = "n8n" in enabled and not (output_dir / N8N_CREDENTIALS_FILENAME).exists()
+    n8n_credentials = load_or_create_n8n_credentials(output_dir) if "n8n" in enabled else None
 
     compose_path = output_dir / "docker-compose.yml"
-    compose_path.write_text(render_compose(config, resolved_ports))
+    compose_path.write_text(render_compose(config, resolved_ports, n8n_credentials))
     save_state(config, output_dir)
-
-    enabled = enabled_service_keys(config.tier, config.gpu, config.enabled_optional)
 
     for key in enabled:
         (output_dir / "data" / key).mkdir(parents=True, exist_ok=True)
@@ -304,6 +343,48 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             "Verify Connection."
         )
 
+    if "open-webui" in enabled and "qdrant" in enabled and "embeddings" in enabled:
+
+        # Same "explain rather than silently automate" precedent as the
+        # ComfyUI wiring warning above - Open WebUI's RAG settings are
+        # admin-panel configuration, not compose-level, same as ComfyUI.
+        warnings.append(
+            "Qdrant and the embeddings service don't wire themselves into Open WebUI's "
+            "document retrieval automatically - in Open WebUI, go to Admin Panel > "
+            "Settings > Documents, set Vector Database to Qdrant "
+            "(http://qdrant:6333), and set the Embedding Model Engine to OpenAI with "
+            "Base URL http://embeddings:80/v1 (no API key required)."
+        )
+
+    if "open-webui" in enabled and "whisper" in enabled:
+
+        warnings.append(
+            "Whisper doesn't wire itself into Open WebUI's voice input automatically - "
+            "in Open WebUI, go to Admin Panel > Settings > Audio, set Speech-to-Text "
+            "Engine to OpenAI, and set the API Base URL to http://whisper:8000/v1."
+        )
+
+    if "open-webui" in enabled and "tts" in enabled:
+
+        warnings.append(
+            "Kokoro doesn't wire itself into Open WebUI's voice output automatically - "
+            "in Open WebUI, go to Admin Panel > Settings > Audio, set Text-to-Speech "
+            "Engine to OpenAI, and set the API Base URL to http://tts:8880/v1."
+        )
+
+    if n8n_credentials_are_new:
+
+        # The only place this password is ever shown - credentials are
+        # write-once (load_or_create_n8n_credentials()), so a later
+        # regenerate reuses the same login rather than locking the user
+        # out of an n8n instance they've already set workflows up in.
+        warnings.append(
+            "n8n admin login (shown only once - stored at "
+            f"{output_dir}/{N8N_CREDENTIALS_FILENAME} if you need it again):\n"
+            f"    Email:    {n8n_credentials['email']}\n"
+            f"    Password: {n8n_credentials['password']}"
+        )
+
     for key in enabled:
 
         port = resolved_ports.get(key)
@@ -352,6 +433,27 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
             f"Port {DASHBOARD_PORT} is already in use by something else on this host - "
             "the dashboard container will fail to bind it until that's freed."
         )
+
+    if config.vulcan_stack_dir is not None:
+
+        enabled_ports = {key: resolved_ports[key] for key in enabled if key in resolved_ports}
+        warnings.extend(check_vulcan_port_conflicts(enabled_ports, config.vulcan_stack_dir))
+
+        host = detect_host_ip() or "localhost"
+        tiles = build_homepage_tiles(enabled, resolved_ports, host)
+        merged = merge_into_vulcan_homepage(config.vulcan_stack_dir, tiles)
+
+        if merged:
+            warnings.append(
+                f"Added a Homepage section at {config.vulcan_stack_dir}/config/homepage/"
+                "services.yaml for your enabled services - only that one section is "
+                "ever touched, nothing else in the file."
+            )
+        elif tiles:
+            warnings.append(
+                f"Found a Vulcan stack at {config.vulcan_stack_dir}, but it doesn't have "
+                "Homepage enabled - nothing to add a section to."
+            )
 
     return {
         "success": True,

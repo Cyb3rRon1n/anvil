@@ -72,6 +72,22 @@
       </a>
     </li>
 {% endif %}
+{% if 'n8n' in enabled %}
+    <li>
+      <a href="http://{{ host }}:5678">
+        <div class="name">n8n</div>
+        <div class="desc">Workflow automation</div>
+      </a>
+    </li>
+{% endif %}
+{% if 'qdrant' in enabled %}
+    <li>
+      <a href="http://{{ host }}:6333/dashboard">
+        <div class="name">Qdrant</div>
+        <div class="desc">Vector database console (RAG)</div>
+      </a>
+    </li>
+{% endif %}
   </ul>
 </main>
 </body>

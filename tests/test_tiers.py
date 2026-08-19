@@ -184,3 +184,43 @@ def test_medium_capability_note_no_longer_claims_comfortable_14b():
 
 def test_heavy_capability_note_claims_14b_comfort():
     assert "14B" in TIERS["heavy"].capability_note
+
+
+# --- RAG/voice/n8n: CPU-only, vendor-agnostic, offered at every tier ---
+
+
+def test_rag_voice_n8n_available_at_light_tier_with_no_gpu():
+    """
+    Unlike ComfyUI/InvokeAI, RAG/voice/n8n need no GPU at all - must be
+    requestable even with gpu=None, a case recommend_tier() itself
+    never reaches Light through (no GPU means no tier at all), but
+    enabled_service_keys() is exercised directly here regardless.
+    """
+
+    requested = {"qdrant", "embeddings", "whisper", "tts", "n8n"}
+
+    assert enabled_service_keys(TIERS["light"], None, requested) == {
+        "ollama", "open-webui", "qdrant", "embeddings", "whisper", "tts", "n8n"
+    }
+
+
+def test_rag_voice_n8n_available_at_every_tier_regardless_of_gpu_vendor():
+
+    requested = {"qdrant", "embeddings", "whisper", "tts", "n8n"}
+
+    for tier_name in ("light", "medium", "heavy"):
+        for gpu in (
+            None,
+            GpuInfo(vendor="nvidia", name="fake", vram_total_mb=12288),
+            GpuInfo(vendor="amd", name="fake", vram_total_mb=12288),
+            GpuInfo(vendor="intel", name="fake", vram_total_mb=12288),
+        ):
+            enabled = enabled_service_keys(TIERS[tier_name], gpu, requested)
+            assert requested <= enabled
+
+
+def test_rag_voice_n8n_omitted_when_not_requested():
+
+    gpu = GpuInfo(vendor="nvidia", name="RTX 3060", vram_total_mb=12288)
+
+    assert enabled_service_keys(TIERS["heavy"], gpu, set()) == {"ollama", "open-webui"}

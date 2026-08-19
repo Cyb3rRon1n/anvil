@@ -449,3 +449,175 @@ MOCK
 
     rm -f "$SETUP_LOG" "$ANVIL_BIN"
 }
+
+@test "TESTING: guided_setup defaults RAG/voice/n8n on at light tier" {
+
+    # Unlike ComfyUI/InvokeAI, RAG/voice/n8n need no GPU compute and no
+    # Heavy tier - must default on even at Light, the weakest tier that
+    # still reaches guided_setup's tier picker at all (a fully GPU-less
+    # host can't reach here yet - both this script and cli.py's
+    # run_install() exit before offering anything at all when no GPU is
+    # detected; see CLAUDE.md's "RAG + voice + n8n" entry for why that's
+    # a real, separately-tracked gap and not fixed in this slice).
+    export SETUP_LOG="/tmp/anvil-test-rag-voice-n8n-$$.log"
+    export TESTING=true
+    rm -f "$SETUP_LOG"
+
+    export ANVIL_BIN="$BATS_TEST_DIRNAME/../tests/mock_anvil_rag_voice_n8n"
+    cat > "$ANVIL_BIN" <<'MOCK'
+#!/bin/bash
+if [ "$1" = "detect" ]; then
+    cat <<'EOF'
+GPU_VENDOR='nvidia'
+GPU_VRAM_MB=4096
+GPU_NAME='GTX 1650'
+DOCKER_INSTALLED=true
+DOCKER_RUNNING=true
+DOCKER_COMPOSE_V2=true
+RECOMMENDED_TIER=light
+RECOMMENDED_TIER_EXPLANATION='GPU qualifies for Light.'
+DEFAULT_PUID=1000
+DEFAULT_PGID=1000
+PREVIOUS_TIER=
+PREVIOUS_PUID=
+PREVIOUS_PGID=
+PREVIOUS_ENABLED_OPTIONAL=
+EOF
+else
+    exit 0
+fi
+MOCK
+    chmod +x "$ANVIL_BIN"
+
+    run bash -c "source '$MENU_SH'; guided_setup; cat '$SETUP_LOG'"
+
+    [[ "$output" == *"RAG: --rag"* ]]
+    [[ "$output" == *"Voice: --voice"* ]]
+    [[ "$output" == *"n8n: --n8n"* ]]
+    [[ "$output" == *"Selected tier: light"* ]]
+
+    rm -f "$SETUP_LOG" "$ANVIL_BIN"
+}
+
+@test "TESTING: guided_setup omits RAG/voice/n8n when a previous run declined them" {
+
+    export SETUP_LOG="/tmp/anvil-test-rag-voice-n8n-off-$$.log"
+    export TESTING=true
+    rm -f "$SETUP_LOG"
+
+    export ANVIL_BIN="$BATS_TEST_DIRNAME/../tests/mock_anvil_rag_voice_n8n_off"
+    cat > "$ANVIL_BIN" <<'MOCK'
+#!/bin/bash
+if [ "$1" = "detect" ]; then
+    cat <<'EOF'
+GPU_VENDOR='nvidia'
+GPU_VRAM_MB=4096
+GPU_NAME='GTX 1650'
+DOCKER_INSTALLED=true
+DOCKER_RUNNING=true
+DOCKER_COMPOSE_V2=true
+RECOMMENDED_TIER=light
+RECOMMENDED_TIER_EXPLANATION='GPU qualifies for Light.'
+DEFAULT_PUID=1000
+DEFAULT_PGID=1000
+PREVIOUS_TIER=light
+PREVIOUS_PUID=1000
+PREVIOUS_PGID=1000
+PREVIOUS_ENABLED_OPTIONAL=
+EOF
+else
+    exit 0
+fi
+MOCK
+    chmod +x "$ANVIL_BIN"
+
+    run bash -c "source '$MENU_SH'; guided_setup; cat '$SETUP_LOG'"
+
+    [[ "$output" == *"RAG: --no-rag"* ]]
+    [[ "$output" == *"Voice: --no-voice"* ]]
+    [[ "$output" == *"n8n: --no-n8n"* ]]
+
+    rm -f "$SETUP_LOG" "$ANVIL_BIN"
+}
+
+@test "TESTING: guided_setup enables Vulcan integration when detect finds a stack" {
+
+    export SETUP_LOG="/tmp/anvil-test-vulcan-found-$$.log"
+    export TESTING=true
+    rm -f "$SETUP_LOG"
+
+    export ANVIL_BIN="$BATS_TEST_DIRNAME/../tests/mock_anvil_vulcan_found"
+    cat > "$ANVIL_BIN" <<'MOCK'
+#!/bin/bash
+if [ "$1" = "detect" ]; then
+    cat <<'EOF'
+GPU_VENDOR='nvidia'
+GPU_VRAM_MB=4096
+GPU_NAME='GTX 1650'
+DOCKER_INSTALLED=true
+DOCKER_RUNNING=true
+DOCKER_COMPOSE_V2=true
+RECOMMENDED_TIER=light
+RECOMMENDED_TIER_EXPLANATION='GPU qualifies for Light.'
+DEFAULT_PUID=1000
+DEFAULT_PGID=1000
+PREVIOUS_TIER=
+PREVIOUS_PUID=
+PREVIOUS_PGID=
+PREVIOUS_ENABLED_OPTIONAL=
+VULCAN_STACK_FOUND=true
+VULCAN_STACK_PATH='/home/user/vulcan/stack'
+EOF
+else
+    exit 0
+fi
+MOCK
+    chmod +x "$ANVIL_BIN"
+
+    run bash -c "source '$MENU_SH'; guided_setup; cat '$SETUP_LOG'"
+
+    [[ "$output" == *"Vulcan integration: --integrate-vulcan"* ]]
+
+    rm -f "$SETUP_LOG" "$ANVIL_BIN"
+}
+
+@test "TESTING: guided_setup skips Vulcan integration entirely when no stack is found" {
+
+    export SETUP_LOG="/tmp/anvil-test-vulcan-not-found-$$.log"
+    export TESTING=true
+    rm -f "$SETUP_LOG"
+
+    export ANVIL_BIN="$BATS_TEST_DIRNAME/../tests/mock_anvil_vulcan_not_found"
+    cat > "$ANVIL_BIN" <<'MOCK'
+#!/bin/bash
+if [ "$1" = "detect" ]; then
+    cat <<'EOF'
+GPU_VENDOR='nvidia'
+GPU_VRAM_MB=4096
+GPU_NAME='GTX 1650'
+DOCKER_INSTALLED=true
+DOCKER_RUNNING=true
+DOCKER_COMPOSE_V2=true
+RECOMMENDED_TIER=light
+RECOMMENDED_TIER_EXPLANATION='GPU qualifies for Light.'
+DEFAULT_PUID=1000
+DEFAULT_PGID=1000
+PREVIOUS_TIER=
+PREVIOUS_PUID=
+PREVIOUS_PGID=
+PREVIOUS_ENABLED_OPTIONAL=
+VULCAN_STACK_FOUND=false
+VULCAN_STACK_PATH=''
+EOF
+else
+    exit 0
+fi
+MOCK
+    chmod +x "$ANVIL_BIN"
+
+    run bash -c "source '$MENU_SH'; guided_setup; cat '$SETUP_LOG'"
+
+    [[ "$output" == *"Vulcan integration: --no-integrate-vulcan"* ]]
+
+    rm -f "$SETUP_LOG" "$ANVIL_BIN"
+}
