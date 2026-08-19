@@ -922,9 +922,9 @@ def test_interactive_start_own_orphan_cleans_up_and_retries(tmp_path):
             app,
             ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
             # blank x7 accepts the RAG/voice/n8n/litellm/searxng/vane/
-            # localai confirm defaults, then "y" starts now and "y"
-            # confirms the own-orphan cleanup.
-            input="\n\n\n\n\n\n\ny\ny\n"
+            # localai confirm defaults, then "y" starts now - own-orphan
+            # cleanup is automatic now, no confirm to answer.
+            input="\n\n\n\n\n\n\ny\n"
         )
 
     assert result.exit_code == 0, result.output
@@ -932,7 +932,13 @@ def test_interactive_start_own_orphan_cleans_up_and_retries(tmp_path):
     mock_cleanup.assert_called_once_with("stack")
 
 
-def test_interactive_start_remaps_port_and_retries(tmp_path):
+def test_start_auto_remaps_port_and_retries(tmp_path):
+    """
+    Auto-resolve has to work identically whether the caller is
+    interactive or not, since neither of the two real callers
+    (whiptail's always-non-interactive Guided Setup, and `anvil start`)
+    can prompt a human - this exercises it via --non-interactive.
+    """
 
     info = make_system_info(gpus=[GpuInfo(vendor="nvidia", name="RTX 3060 Ti", vram_total_mb=8192)])
     up_proc = MagicMock(returncode=0)
@@ -961,23 +967,19 @@ def test_interactive_start_remaps_port_and_retries(tmp_path):
         "installer.cli.run_docker_command", return_value=up_proc
     ):
 
-        result = runner.invoke(
-            app,
-            ["--plain", "--yes", "--tier", "medium", "--puid", "1000", "--pgid", "1000"],
-            # blank x7 accepts the RAG/voice/n8n/litellm/searxng/vane/
-            # localai confirm defaults, then "y" starts now and "11500"
-            # is the remapped port.
-            input="\n\n\n\n\n\n\ny\n11500\n"
-        )
+        result = runner.invoke(app, ["--non-interactive", "--yes", "--tier", "medium", "--start"])
 
     assert result.exit_code == 0, result.output
     assert "Stack is up" in result.output
+    assert "reassigned" in result.output
 
     # First call is the initial generate; the second is the post-remap
     # regenerate, and must carry the new port through port_overrides.
+    # 11435 is the real next free port above every other default in
+    # SERVICE_PORTS (11434 is ollama's own default, already conflicted).
     assert mock_write_stack.call_count == 2
     regenerated_config = mock_write_stack.call_args_list[1][0][0]
-    assert regenerated_config.port_overrides == {"ollama": 11500}
+    assert regenerated_config.port_overrides == {"ollama": 11435}
 
 
 def test_interactive_start_port_conflict_give_up_exits_1(tmp_path):
@@ -1167,6 +1169,91 @@ def test_update_failure_exits_1(tmp_path):
 
     assert result.exit_code == 1
     assert "Failed to pull images" in result.output
+
+
+def test_start_no_stack_found_exits_1(tmp_path):
+
+    with patch("installer.cli.STACK_DIR", tmp_path / "stack"):
+
+        result = runner.invoke(app, ["start"])
+
+    assert result.exit_code == 1
+    assert "No stack found" in result.output
+
+
+def test_start_no_state_file_exits_1(tmp_path):
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}")
+
+    with patch("installer.cli.STACK_DIR", stack_dir):
+
+        result = runner.invoke(app, ["start"])
+
+    assert result.exit_code == 1
+    assert "No usable state file" in result.output
+
+
+def test_start_reassigns_conflicting_port_with_no_prompt(tmp_path):
+    """
+    The real bug this fixes: restarting an existing stack whose default
+    port now collides with something else running (e.g. a sibling
+    project) used to just shell out to `docker compose up -d` with no
+    conflict check at all. `start` now runs the same auto-resolve
+    preflight as Guided Setup, and needs no input to do it.
+    """
+
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    (stack_dir / "docker-compose.yml").write_text("services: {}")
+    (stack_dir / ".anvil-state.json").write_text(
+        '{"tier": "medium", "puid": 1000, "pgid": 1000, "gpu_vendor": null, '
+        '"enabled_optional": [], "generated_at": "2026-01-01T00:00:00+00:00"}'
+    )
+
+    info = make_system_info(gpus=[])
+    up_proc = MagicMock(returncode=0)
+
+    conflict_then_clear = [
+        {
+            "available": False,
+            "conflicts": [8080],
+            "owners": {8080: 'container "vulcan-qbittorrent-1" (image lscr.io/linuxserver/qbittorrent)'},
+            "port_services": {8080: "dashboard"},
+            "own_orphan": {8080: False},
+        },
+        {"available": True, "conflicts": [], "owners": {}, "port_services": {}, "own_orphan": {}},
+    ]
+
+    with patch("installer.cli.detect_system", return_value=info), patch(
+        "installer.cli.STACK_DIR", stack_dir
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack, patch(
+        "installer.cli.check_ports_available", side_effect=conflict_then_clear
+    ), patch(
+        "installer.cli.verify_stack_running",
+        return_value={"all_running": True, "error": None, "not_running": []}
+    ), patch(
+        "installer.cli.run_docker_command", return_value=up_proc
+    ) as mock_run_docker:
+
+        result = runner.invoke(app, ["start"])
+
+    assert result.exit_code == 0, result.output
+    assert "reassigned" in result.output
+    assert "Stack is up" in result.output
+
+    # dashboard's own default is 8080 (DASHBOARD_PORT). resolve_ports()
+    # returns every SERVICE_PORTS default regardless of what's enabled,
+    # and localai's own default (8081) is already among them, so 8082
+    # is the real next free port.
+    regenerated_config = mock_write_stack.call_args_list[1][0][0]
+    assert regenerated_config.port_overrides == {"dashboard": 8082}
+    mock_run_docker.assert_called_once_with(
+        ["docker", "compose", "-f", READY_WRITE_RESULT["compose_path"], "up", "-d"]
+    )
 
 
 def test_backup_success():

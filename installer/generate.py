@@ -131,6 +131,27 @@ def resolve_ports(config: GenerationConfig) -> dict[str, int]:
     return {**all_ports, **config.port_overrides}
 
 
+def find_next_available_port(excluded_port: int, used_ports: set[int]) -> int | None:
+    """
+    Find the next available port starting from excluded_port + 1,
+    skipping any already in use. Ported from Vulcan's own (private)
+    version of this same helper - exported here (no leading
+    underscore) because Anvil's cli.py needs it directly for live
+    conflict resolution against another host process, not just the
+    self-contained default-table dedup Vulcan built it for.
+    """
+
+    port = excluded_port + 1
+    max_port = 65535
+
+    while port <= max_port:
+        if port not in used_ports:
+            return port
+        port += 1
+
+    return None
+
+
 def render_stack_summary(config: GenerationConfig, host_ip: str | None) -> str:
     """
     Real per-service URLs for the currently-generated stack - shared

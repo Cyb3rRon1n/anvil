@@ -18,12 +18,15 @@ BACKTITLE="Anvil - GPU-Compute Creativity Forge"
 # --- Theme ---------------------------------------------------------
 #
 # whiptail/newt only supports a fixed set of named colors (no
-# arbitrary hex). Inverted from Vulcan's cyan-panel-on-black palette -
-# dark panel on a near-black background instead, a real visual break
-# from Vulcan's theme (this project's own "forge" branding fits a
-# darker palette better than a bright cyan panel) - every fg,bg pair
+# arbitrary hex) - "blue" is the closest named match to Anvil's real
+# brand accent, "temper" (#2f97f0 in docs/images/logo.svg and the
+# website), so the installer now reads as the same project as its own
+# README/site instead of an arbitrary whiptail-safe cyan. Structurally
+# still Vulcan's palette inverted (dark panel on a near-black
+# background instead of a bright panel on black) - every fg,bg pair
 # below is Vulcan's swapped to bg,fg, so the same relative contrast
-# between elements holds, just inverted.
+# between elements holds and the two installers still read as
+# deliberately differentiated, just in Anvil's own real hue now.
 #
 # button/checkbox/listbox originally used the same color for BOTH
 # their focused and unfocused state - identical to window's own
@@ -35,28 +38,28 @@ BACKTITLE="Anvil - GPU-Compute Creativity Forge"
 # and a yellow highlight when focused.
 export NEWT_COLORS='
 root=white,black
-border=black,cyan
-window=cyan,black
+border=black,blue
+window=blue,black
 shadow=black,black
-title=cyan,black
-button=black,cyan
+title=blue,black
+button=black,blue
 actbutton=yellow,black
-checkbox=black,cyan
+checkbox=black,blue
 actcheckbox=yellow,black
-entry=cyan,black
+entry=blue,black
 label=white,black
-listbox=black,cyan
+listbox=black,blue
 actlistbox=yellow,black
-sellistbox=black,cyan
+sellistbox=black,blue
 actsellistbox=yellow,black
-textbox=cyan,black
-acttextbox=cyan,black
+textbox=blue,black
+acttextbox=blue,black
 helpline=white,black
 roottext=white,black
 emptyscale=black,
 fullscale=red,
-disabledentry=cyan,gray
-compactbutton=black,cyan
+disabledentry=blue,gray
+compactbutton=black,blue
 '
 
 # whiptail defaults to "compact" Yes/No/OK/Cancel buttons - plain
@@ -654,8 +657,8 @@ start_stack() {
     fi
 
     confirm_and_run "Start Stack" \
-        "This will start the stack using $compose_file." \
-        docker compose -f "$compose_file" up -d
+        "This will start the stack using $compose_file, reassigning any port already in use." \
+        "$ANVIL_BIN" start
 }
 
 # --- View Status -----------------------------------------------------
