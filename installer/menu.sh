@@ -21,12 +21,11 @@ BACKTITLE="Anvil - GPU-Compute Creativity Forge"
 # arbitrary hex) - "blue" is the closest named match to Anvil's real
 # brand accent, "temper" (#2f97f0 in docs/images/logo.svg and the
 # website), so the installer now reads as the same project as its own
-# README/site instead of an arbitrary whiptail-safe cyan. Structurally
-# still Vulcan's palette inverted (dark panel on a near-black
-# background instead of a bright panel on black) - every fg,bg pair
-# below is Vulcan's swapped to bg,fg, so the same relative contrast
-# between elements holds and the two installers still read as
-# deliberately differentiated, just in Anvil's own real hue now.
+# README/site instead of an arbitrary whiptail-safe cyan. Same
+# structure as Vulcan's theme block (blue panel on black, not an
+# inverted black-on-blue border), just the one hue swapped - the two
+# installers still read as deliberately differentiated projects, just
+# by real brand color now instead of an inverted layout.
 #
 # button/checkbox/listbox originally used the same color for BOTH
 # their focused and unfocused state - identical to window's own
@@ -38,28 +37,28 @@ BACKTITLE="Anvil - GPU-Compute Creativity Forge"
 # and a yellow highlight when focused.
 export NEWT_COLORS='
 root=white,black
-border=black,blue
-window=blue,black
+border=blue,black
+window=black,blue
 shadow=black,black
-title=blue,black
-button=black,blue
-actbutton=yellow,black
-checkbox=black,blue
-actcheckbox=yellow,black
-entry=blue,black
+title=black,blue
+button=blue,black
+actbutton=black,yellow
+checkbox=blue,black
+actcheckbox=black,yellow
+entry=black,blue
 label=white,black
-listbox=black,blue
-actlistbox=yellow,black
-sellistbox=black,blue
-actsellistbox=yellow,black
-textbox=blue,black
-acttextbox=blue,black
+listbox=blue,black
+actlistbox=black,yellow
+sellistbox=blue,black
+actsellistbox=black,yellow
+textbox=black,blue
+acttextbox=black,blue
 helpline=white,black
 roottext=white,black
-emptyscale=black,
-fullscale=red,
-disabledentry=blue,gray
-compactbutton=black,blue
+emptyscale=,black
+fullscale=,red
+disabledentry=gray,blue
+compactbutton=blue,black
 '
 
 # whiptail defaults to "compact" Yes/No/OK/Cancel buttons - plain
