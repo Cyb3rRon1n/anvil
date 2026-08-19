@@ -122,13 +122,15 @@ def recommend_tier(gpu: GpuInfo | None) -> Recommendation:
     if gpu is None:
 
         return Recommendation(
-            tier=None,
+            tier=TIERS["light"],
             gpu=None,
             explanation=(
-                "No dedicated GPU with real VRAM detected. Integrated graphics shares "
-                "system RAM rather than offering a fixed VRAM pool, which isn't a "
-                "credible substitute for what local LLM/image-generation workloads need - "
-                "Anvil has nothing to recommend on this host."
+                "No dedicated GPU with real VRAM detected. Ollama still runs on CPU, "
+                "and RAG/voice/n8n are CPU-only and vendor-agnostic - Light tier covers "
+                "all of it. Integrated graphics shares system RAM rather than offering a "
+                "fixed VRAM pool, so it's scored the same as no GPU at all: image "
+                "generation (ComfyUI/InvokeAI) and the Medium/Heavy tiers need real "
+                "dedicated VRAM and aren't available here."
             )
         )
 

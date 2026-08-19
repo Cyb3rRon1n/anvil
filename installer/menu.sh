@@ -261,16 +261,11 @@ guided_setup() {
     fi
 
     if [ -z "$GPU_VENDOR" ]; then
-        log_info "No GPU detected, exiting guided setup"
-        if [ -z "$TESTING" ]; then
-            whiptail --backtitle "$BACKTITLE" --title "No GPU" --msgbox \
-                "No dedicated GPU with real VRAM detected. Anvil has nothing to recommend on this host." 10 70
-        fi
-        return 0
+        log_info "No GPU detected - Light tier only (CPU-only services)"
     fi
 
     local default_tier="$RECOMMENDED_TIER"
-    local gpu_desc="$GPU_VENDOR"
+    local gpu_desc="${GPU_VENDOR:-none detected (CPU-only)}"
     [ -n "$GPU_NAME" ] && gpu_desc="$GPU_NAME ($GPU_VENDOR)"
     local vram_gb=$(( GPU_VRAM_MB / 1024 ))
 
@@ -503,7 +498,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         local summary=""
         summary+="Tier:       $TIER\n"
-        summary+="GPU:        $GPU_VENDOR - $GPU_NAME (${vram_gb}GB)\n"
+        summary+="GPU:        $gpu_desc (${vram_gb}GB)\n"
         summary+="PUID/PGID:  $PUID / $PGID\n"
         summary+="ComfyUI:    $([ "$COMFYUI_FLAG" = "--comfyui" ] && echo "yes" || echo "no")\n"
         summary+="InvokeAI:   $([ "$INVOKEAI_FLAG" = "--invokeai" ] && echo "yes" || echo "no")\n"

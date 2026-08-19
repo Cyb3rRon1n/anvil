@@ -2,11 +2,19 @@ from installer.detect import GpuInfo
 from installer.tiers import TIERS, enabled_service_keys, recommend_tier
 
 
-def test_recommend_tier_no_gpu_returns_no_tier():
+def test_recommend_tier_no_gpu_recommends_light():
+    """
+    Light tier's own min_vram_gb floor is 0.0 - a GPU-less host isn't
+    "nothing to recommend", it's just Light: Ollama runs on CPU, and
+    RAG/voice/n8n need no GPU at all. Medium/Heavy and ComfyUI/InvokeAI
+    stay correctly unreachable (see enabled_service_keys' own vendor
+    gating below), but Light itself must not be blocked.
+    """
 
     result = recommend_tier(None)
 
-    assert result.tier is None
+    assert result.tier is TIERS["light"]
+    assert result.gpu is None
     assert "No dedicated GPU" in result.explanation
 
 
@@ -192,9 +200,9 @@ def test_heavy_capability_note_claims_14b_comfort():
 def test_rag_voice_n8n_available_at_light_tier_with_no_gpu():
     """
     Unlike ComfyUI/InvokeAI, RAG/voice/n8n need no GPU at all - must be
-    requestable even with gpu=None, a case recommend_tier() itself
-    never reaches Light through (no GPU means no tier at all), but
-    enabled_service_keys() is exercised directly here regardless.
+    requestable with gpu=None, which recommend_tier() itself now also
+    reaches Light through (see test_recommend_tier_no_gpu_recommends_
+    light above); enabled_service_keys() is exercised directly here too.
     """
 
     requested = {"qdrant", "embeddings", "whisper", "tts", "n8n"}

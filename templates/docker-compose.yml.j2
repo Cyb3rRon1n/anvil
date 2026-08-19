@@ -187,8 +187,6 @@ services:
     container_name: n8n
     user: "{{ puid }}:{{ pgid }}"
     environment:
-      - N8N_DEFAULT_ADMIN_EMAIL={{ n8n_email }}
-      - N8N_DEFAULT_ADMIN_PASSWORD={{ n8n_password }}
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http

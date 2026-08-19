@@ -104,14 +104,27 @@ def test_urls_shell_prints_nothing_with_no_previous_state(tmp_path):
     assert result.output.strip() == ""
 
 
-def test_no_gpu_exits_1_with_explanation():
+def test_no_gpu_recommends_and_generates_light_tier(tmp_path):
+    """
+    The real (unmocked) recommend_tier() path: a GPU-less host must
+    reach Light tier and generate successfully, not exit - Light's own
+    0.0 VRAM floor already covers CPU-only Ollama plus RAG/voice/n8n.
+    """
 
-    with patch("installer.cli.detect_system", return_value=make_system_info()):
+    with patch("installer.cli.detect_system", return_value=make_system_info()), patch(
+        "installer.cli.STACK_DIR", tmp_path / "stack"
+    ), patch(
+        "installer.cli.write_stack", return_value=READY_WRITE_RESULT
+    ) as mock_write_stack:
 
         result = runner.invoke(app, ["--non-interactive", "--yes"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == 0, result.output
     assert "No dedicated GPU" in result.output
+
+    config = mock_write_stack.call_args[0][0]
+    assert config.tier.name == "light"
+    assert config.enabled_optional == CPU_ONLY_DEFAULTS
 
 
 def test_docker_not_installed_declined_exits_1():
@@ -511,26 +524,18 @@ def test_non_interactive_light_tier_with_no_rag_no_voice_no_n8n_flags(tmp_path):
     """
     Unlike comfyui/invokeai (which need Heavy + a supported GPU vendor
     to even be offered), rag/voice/n8n are offered - and default on -
-    at every tier including Light, regardless of GPU vendor. recommend_
-    tier() is mocked here to isolate that enablement logic - a real
-    fully GPU-less host can't reach Light at all yet (run_install()
-    exits before offering anything when recommend_tier() returns no
-    tier), a real, separately-tracked gap since RAG/voice/n8n
-    themselves need no GPU - see CLAUDE.md's "RAG + voice + n8n" entry.
+    at every tier including Light, regardless of GPU vendor - including
+    a real fully GPU-less host, which reaches Light on its own via
+    recommend_tier()'s 0.0 VRAM floor (no mocking needed here).
     """
 
     info = make_system_info(gpus=[])
 
     with patch("installer.cli.detect_system", return_value=info), patch(
-        "installer.cli.recommend_tier"
-    ) as mock_recommend, patch(
         "installer.cli.STACK_DIR", tmp_path / "stack"
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack:
-
-        from installer.tiers import TIERS, Recommendation
-        mock_recommend.return_value = Recommendation(tier=TIERS["light"], gpu=None, explanation="test")
 
         result = runner.invoke(
             app,
@@ -549,15 +554,10 @@ def test_non_interactive_light_tier_defaults_rag_voice_n8n_on(tmp_path):
     info = make_system_info(gpus=[])
 
     with patch("installer.cli.detect_system", return_value=info), patch(
-        "installer.cli.recommend_tier"
-    ) as mock_recommend, patch(
         "installer.cli.STACK_DIR", tmp_path / "stack"
     ), patch(
         "installer.cli.write_stack", return_value=READY_WRITE_RESULT
     ) as mock_write_stack:
-
-        from installer.tiers import TIERS, Recommendation
-        mock_recommend.return_value = Recommendation(tier=TIERS["light"], gpu=None, explanation="test")
 
         result = runner.invoke(app, ["--non-interactive", "--yes", "--no-start"])
 

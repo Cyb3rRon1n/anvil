@@ -621,17 +621,27 @@ def test_write_stack_light_tier_with_voice_renders_whisper_and_tts(tmp_path):
     assert "kokoro-fastapi-cpu:v0.2.4" in compose
 
 
-def test_write_stack_n8n_renders_generated_credentials_into_compose(tmp_path):
+def test_write_stack_n8n_has_no_owner_env_vars_in_compose(tmp_path):
+    """
+    n8n 2.6.4 has no env-var-based owner provisioning at all - neither
+    N8N_DEFAULT_ADMIN_* (ODS's own compose, what this project originally
+    copied) nor N8N_INSTANCE_OWNER_* (n8n's own docs) actually creates
+    the account, confirmed by grepping the real image's installed
+    source (see installer/secrets.py's module docstring). The only real
+    mechanism is n8n's own one-time /rest/owner/setup wizard, which
+    Anvil can't pre-seed - so the compose file carries no owner secret
+    at all, and the credentials are surfaced only via the warning
+    message (see test_write_stack_n8n_credentials_warning_only_shown_
+    on_first_generate below) for the user to type into that wizard.
+    """
 
     config = make_config("light", enabled_optional={"n8n"})
     write_stack(config, output_dir=tmp_path / "stack")
 
-    output_dir = tmp_path / "stack"
-    compose = (output_dir / "docker-compose.yml").read_text()
-    credentials = json.loads((output_dir / ".n8n-credentials.json").read_text())
+    compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
 
-    assert f"N8N_DEFAULT_ADMIN_EMAIL={credentials['email']}" in compose
-    assert f"N8N_DEFAULT_ADMIN_PASSWORD={credentials['password']}" in compose
+    assert "N8N_DEFAULT_ADMIN" not in compose
+    assert "N8N_INSTANCE_OWNER" not in compose
 
 
 def test_write_stack_n8n_regenerates_credentials_if_file_is_corrupt(tmp_path):
@@ -675,8 +685,8 @@ def test_write_stack_n8n_credentials_warning_only_shown_on_first_generate(tmp_pa
     first_result = write_stack(config, output_dir=output_dir)
     second_result = write_stack(config, output_dir=output_dir)
 
-    assert any("n8n admin login" in w for w in first_result["warnings"])
-    assert not any("n8n admin login" in w for w in second_result["warnings"])
+    assert any("n8n needs a one-time setup" in w for w in first_result["warnings"])
+    assert not any("n8n needs a one-time setup" in w for w in second_result["warnings"])
 
 
 def test_write_stack_rag_and_voice_warn_about_manual_open_webui_wiring(tmp_path):

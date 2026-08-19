@@ -169,8 +169,7 @@ def _jinja_env() -> Environment:
 
 def render_compose(
     config: GenerationConfig,
-    resolved_ports: dict[str, int] | None = None,
-    n8n_credentials: dict | None = None
+    resolved_ports: dict[str, int] | None = None
 ) -> str:
 
     template = _jinja_env().get_template("docker-compose.yml.j2")
@@ -185,9 +184,7 @@ def render_compose(
         puid=config.puid,
         pgid=config.pgid,
         render_gid=detect_render_group_gid() if gpu_vendor == "amd" else None,
-        ports=resolved_ports,
-        n8n_email=n8n_credentials["email"] if n8n_credentials else None,
-        n8n_password=n8n_credentials["password"] if n8n_credentials else None
+        ports=resolved_ports
     )
 
 
@@ -213,7 +210,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
     n8n_credentials = load_or_create_n8n_credentials(output_dir) if "n8n" in enabled else None
 
     compose_path = output_dir / "docker-compose.yml"
-    compose_path.write_text(render_compose(config, resolved_ports, n8n_credentials))
+    compose_path.write_text(render_compose(config, resolved_ports))
     save_state(config, output_dir)
 
     for key in enabled:
@@ -374,12 +371,22 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     if n8n_credentials_are_new:
 
-        # The only place this password is ever shown - credentials are
-        # write-once (load_or_create_n8n_credentials()), so a later
-        # regenerate reuses the same login rather than locking the user
-        # out of an n8n instance they've already set workflows up in.
+        # n8n 2.6.4 has no env-var-based owner provisioning at all -
+        # checked directly against its own installed source (zero
+        # references to N8N_DEFAULT_ADMIN_* or N8N_INSTANCE_OWNER_*,
+        # both tried and both real dead ends). The only real mechanism
+        # is a one-time POST to /rest/owner/setup, which n8n's own
+        # first-run setup wizard makes for you - so this stays a manual
+        # step, the same pattern as Qdrant/Whisper/Kokoro's Open WebUI
+        # wiring above, not something Anvil can pre-seed into the
+        # container. Credentials are write-once (load_or_create_n8n_
+        # credentials()) so a later regenerate keeps suggesting the
+        # same login rather than one the user never actually set.
+        n8n_host = detect_host_ip() or "localhost"
+        n8n_url_port = resolved_ports.get("n8n")
         warnings.append(
-            "n8n admin login (shown only once - stored at "
+            f"n8n needs a one-time setup at http://{n8n_host}:{n8n_url_port} - on the "
+            "'Set up owner account' screen, use (stored at "
             f"{output_dir}/{N8N_CREDENTIALS_FILENAME} if you need it again):\n"
             f"    Email:    {n8n_credentials['email']}\n"
             f"    Password: {n8n_credentials['password']}"
