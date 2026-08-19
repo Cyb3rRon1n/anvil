@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="586" viewBox="0 0 900 586">
+  <rect width="900" height="586" rx="12" fill="#0d1117"/>
+  <path d="M0,12 a12,12 0 0 1 12,-12 h876 a12,12 0 0 1 12,12 v34 h-900 z" fill="#161b22"/>
+  <line x1="0" y1="46" x2="900" y2="46" stroke="#30363d" stroke-width="1"/>
+  <circle cx="26" cy="23" r="7" fill="#e0645a" opacity="0.85"/>
+  <circle cx="48" cy="23" r="7" fill="#e0b04a" opacity="0.85"/>
+  <circle cx="70" cy="23" r="7" fill="#5fb87a" opacity="0.85"/>
+  <text x="450" y="28" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#8b949e">anvil</text>
+
+  <rect x="0" y="46" width="900" height="540" fill="#000000"/>
+
+  <text x="450" y="78" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#c9c9c9">Anvil - GPU-Compute Creativity Forge</text>
+
+  <rect x="150" y="96" width="600" height="436" fill="#0f1b26" stroke="#2f97f0" stroke-width="2"/>
+
+  <text x="450" y="128" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="17" font-weight="bold" fill="#7cc2fa">Anvil</text>
+  <line x1="180" y1="142" x2="720" y2="142" stroke="#1a4a70" stroke-width="2"/>
+  <text x="450" y="164" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#5c88ad">Choose an action:</text>
+
+  <!-- menu rows -->
+  <g font-family="Menlo, Consolas, monospace" font-size="14">
+    <rect x="180" y="182" width="540" height="26" fill="#2f97f0"/>
+    <text x="196" y="200" fill="#04121e" font-weight="bold">1. Guided Setup - detect GPU, pick tier, generate stack</text>
+
+    <text x="196" y="228" fill="#c7d8e8">2. Start Stack - docker compose up -d</text>
+    <text x="196" y="256" fill="#c7d8e8">3. Stop Stack - docker compose down</text>
+    <text x="196" y="284" fill="#c7d8e8">4. Update Stack - pull latest images, recreate containers</text>
+    <text x="196" y="312" fill="#c7d8e8">5. View Status - show enabled services and URLs</text>
+    <text x="196" y="340" fill="#c7d8e8">6. Backup Stack - archive compose/state to backups/</text>
+    <text x="196" y="368" fill="#c7d8e8">7. Restore Stack - from the most recent backup</text>
+    <text x="196" y="396" fill="#c7d8e8">8. Uninstall Stack - delete config, keep downloaded models</text>
+    <text x="196" y="424" fill="#c7d8e8">0. Exit</text>
+  </g>
+
+  <rect x="380" y="476" width="90" height="28" fill="#2f97f0" stroke="#04121e" stroke-width="1.5"/>
+  <text x="425" y="495" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#04121e">&lt;OK&gt;</text>
+  <rect x="490" y="476" width="110" height="28" fill="#2f97f0" stroke="#04121e" stroke-width="1.5"/>
+  <text x="545" y="495" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#04121e">&lt;Cancel&gt;</text>
+
+  <text x="450" y="561" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="12" fill="#6e7681">Representative mockup, matching menu.sh's real menu items and theme colors</text>
+</svg>

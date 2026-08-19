@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360">
+  <rect width="900" height="360" rx="12" fill="#0d1117"/>
+  <path d="M0,12 a12,12 0 0 1 12,-12 h876 a12,12 0 0 1 12,12 v34 h-900 z" fill="#161b22"/>
+  <line x1="0" y1="46" x2="900" y2="46" stroke="#30363d" stroke-width="1"/>
+  <circle cx="26" cy="23" r="7" fill="#e0645a" opacity="0.85"/>
+  <circle cx="48" cy="23" r="7" fill="#e0b04a" opacity="0.85"/>
+  <circle cx="70" cy="23" r="7" fill="#5fb87a" opacity="0.85"/>
+  <text x="450" y="28" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#8b949e">anvil</text>
+
+  <rect x="0" y="46" width="900" height="314" fill="#000000"/>
+
+  <text x="450" y="78" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="14" fill="#c9c9c9">Anvil - GPU-Compute Creativity Forge</text>
+
+  <rect x="90" y="96" width="720" height="210" fill="#0f1b26" stroke="#2f97f0" stroke-width="2"/>
+
+  <text x="450" y="126" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="17" font-weight="bold" fill="#7cc2fa">[Step 10/11] Vane</text>
+  <line x1="120" y1="140" x2="780" y2="140" stroke="#1a4a70" stroke-width="2"/>
+
+  <g font-family="Menlo, Consolas, monospace" font-size="13" fill="#c7d8e8">
+    <text x="120" y="164">Enable Vane, formerly Perplexica (AI-powered search)? Needs</text>
+    <text x="120" y="182">SearXNG - enabled automatically alongside it if not also checked.</text>
+  </g>
+
+  <g font-family="Menlo, Consolas, monospace" font-size="14">
+    <rect x="120" y="200" width="660" height="26" fill="#2f97f0"/>
+    <text x="136" y="218" fill="#04121e" font-weight="bold">[*] vane - Vane - AI search with cited sources</text>
+  </g>
+
+  <rect x="380" y="252" width="90" height="28" fill="#2f97f0" stroke="#04121e" stroke-width="1.5"/>
+  <text x="425" y="271" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#04121e">&lt;OK&gt;</text>
+  <rect x="490" y="252" width="110" height="28" fill="#2f97f0" stroke="#04121e" stroke-width="1.5"/>
+  <text x="545" y="271" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="13" fill="#04121e">&lt;Cancel&gt;</text>
+
+  <text x="450" y="335" text-anchor="middle" font-family="Menlo, Consolas, monospace" font-size="12" fill="#6e7681">Representative mockup, matching menu.sh's real Vane step (v0.16)</text>
+</svg>

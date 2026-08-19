@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <style>
+    .tool { fill: #3a3f47; }
+    .spark { fill: #3a9fe0; }
+    @media (prefers-color-scheme: dark) {
+      .tool { fill: #c7ced6; }
+    }
+  </style>
+  <g transform="rotate(-20 32 32)">
+    <rect class="tool" x="14" y="22" width="28" height="13" rx="3"/>
+    <rect class="tool" x="25" y="33" width="8" height="24" rx="2"/>
+  </g>
+  <path class="spark" d="M14 4 L17 11 L24 14 L17 17 L14 24 L11 17 L4 14 L11 11 Z"/>
+</svg>

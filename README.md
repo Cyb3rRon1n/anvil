@@ -1,32 +1,52 @@
 # Anvil
 
-**A GPU-compute creativity forge.** *(working title — rename freely, nothing depends on it yet)*
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
+</p>
 
-[Favicon](docs/images/favicon.svg)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Cyb3rRon1n/anvil/main/docs/images/banner.svg"
+       alt="Anvil - A GPU-compute creativity forge, sized to your real VRAM"
+       style="max-width: 100%; height: auto;">
+</p>
 
-- **What** — Detects your GPU's real VRAM, recommends a sized tier, and generates a ready-to-run Docker Compose stack for local LLMs and image generation.
-- **Who it's for** — Homelab and self-hosted folks who want a local AI/creative setup without hand-researching VRAM requirements, Docker images, and GPU passthrough flags per vendor.
-- **Why** — Local LLM and image-generation workloads are VRAM-bound, a different sizing problem than [Vulcan](https://github.com/Cyb3rRon1n/vulcan) (a Jellyfin + *arr media stack forge, Anvil's sibling project) solves for CPU/RAM/disk. See both side by side: [cyb3rron1n.github.io](https://cyb3rron1n.github.io/).
-- **Where** — Any Linux host with Docker. A real NVIDIA, AMD, or Intel Arc GPU unlocks Medium/Heavy tiers and image generation; Light tier (Ollama on CPU, plus optional RAG/voice/n8n) needs no GPU at all.
-- **When to use it** — Real, working build, not a proof of concept. Honest gaps are documented, not hidden — see [ROADMAP.md](ROADMAP.md) for what's shipped versus still open, and [CLAUDE.md](CLAUDE.md) for exactly what's verified against real hardware and what isn't yet.
+<p align="center">
+  📖 <a href="ROADMAP.md">Roadmap</a> · <a href="CLAUDE.md">Architecture &amp; Verification Log</a> · <a href="https://cyb3rron1n.github.io/">Sibling Projects</a> · <a href="docs/images/favicon.svg">Favicon</a>
+</p>
 
-**Status:** Guided TUI by default, plus a scriptable CLI (`--plain`/`--non-interactive`) — detects your GPU's real VRAM (a functional query, not just "is a tool installed"), recommends a tier, generates a Docker Compose stack for Ollama + Open WebUI (+ ComfyUI and/or InvokeAI at Heavy tier — ComfyUI has a real, verified image for NVIDIA, AMD, and Intel Arc; InvokeAI for NVIDIA and AMD), plus optional RAG/voice/n8n at every tier including a GPU-less host. Every service except ComfyUI/InvokeAI is now real-Docker-verified (containers started, real API calls made, not just `docker compose config`); Vulcan integration mode verified live through the real CLI. The one honest gap: neither image-generation option has run against real discrete GPU compute — none exists in this project's environment yet, though InvokeAI has been started and confirmed serving on CPU. Documented in [CLAUDE.md](CLAUDE.md), not hidden.
+Turn your GPU into a local AI/creative server. Anvil detects your real VRAM and generates a Docker Compose stack sized to what your card can actually handle — no manual sizing guesswork, no LLM in the decision path.
+
+- 💬 **Chat** — Ollama + Open WebUI, every tier, GPU or not
+- 🎨 **Image generation** — ComfyUI and/or InvokeAI at Heavy tier (NVIDIA/AMD/Intel Arc)
+- 📚 **RAG** — Qdrant + text-embeddings, wired into Open WebUI's document retrieval
+- 🎙️ **Voice** — Whisper speech-to-text + Kokoro text-to-speech
+- 🔀 **n8n** — visual workflow automation
+- 🌐 **LiteLLM** — one endpoint for local + cloud LLM providers
+- 🔍 **SearXNG + Vane** — private metasearch and AI-powered search with cited sources
+- 🧩 **LocalAI** — an Ollama alternative with broader model format support
+
+Guided TUI by default (`anvil`), or scriptable end to end (`anvil --non-interactive --yes`). Sibling project [Vulcan](https://github.com/Cyb3rRon1n/vulcan) does the same for a self-hosted media stack — Anvil can detect a co-located Vulcan install and merge into its dashboard automatically.
+
+**Status:** real, working build, not a proof of concept. Every service except ComfyUI/InvokeAI has been started for real and hit with real requests, not just schema-validated — see [ROADMAP.md](ROADMAP.md) for what's shipped and [CLAUDE.md](CLAUDE.md) for exactly what's verified and what isn't. The one open gap: no discrete GPU exists in this project's dev environment yet, so image generation has never run against real GPU compute.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/Cyb3rRon1n/anvil.git
 cd anvil
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-anvil
+sudo ./install
 ```
 
-Detects your CPU/RAM/disk and every GPU with real dedicated VRAM, recommends a tier, asks what you want, and generates `stack/docker-compose.yml` — with the option to start it immediately. A host with no discrete GPU (integrated graphics only) gets a clear explanation and no stack, rather than a tier it can't actually deliver on.
+`sudo ./install` bootstraps a local virtual environment on first run, then opens the guided TUI. Detects your CPU/RAM/disk and every GPU with real dedicated VRAM, recommends a tier, asks what you want, and generates `stack/docker-compose.yml` — with the option to start it immediately. A host with no discrete GPU gets Light tier (Ollama on CPU, plus optional RAG/voice/n8n/LiteLLM/SearXNG/Vane/LocalAI) instead of a tier it can't actually deliver on.
+
+<p align="center">
+  <img src="docs/images/screenshots/main-menu.svg" alt="Anvil Main Menu example" style="max-width: 100%; width: 700px;">
+</p>
 
 ```bash
-anvil --plain                           # plain CLI prompts instead of the TUI
-anvil --non-interactive --yes --start   # scripted use
+sudo ./install --plain                           # plain CLI prompts instead of the TUI
+sudo ./install --non-interactive --yes --start    # scripted use
 ```
 
 ## Why a separate project, not a Vulcan mode
@@ -50,6 +70,15 @@ Tiers are based on your GPU's real detected VRAM: **Light** (any real VRAM, smal
 ## What's reused from Vulcan vs. genuinely new
 
 See [CLAUDE.md](CLAUDE.md) for the full breakdown — architecture pattern and project discipline carry over, the tier/sizing model and GPU detection do not.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/screenshots/tier-picker.svg" alt="Anvil tier picker example" style="max-width: 100%; width: 440px;">
+  <img src="docs/images/screenshots/vane-checklist.svg" alt="Anvil Vane setup step example" style="max-width: 100%; width: 440px;">
+</p>
+
+<sub>Representative mockups matching the real whiptail theme and copy, not literal captures — see <a href="installer/menu.sh"><code>menu.sh</code></a>.</sub>
 
 ## License
 
