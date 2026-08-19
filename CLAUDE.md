@@ -226,6 +226,8 @@ The real, only mechanism, found by reading `owner.controller.js` directly: `@Pos
 
 **Test coverage**: 206 Python tests (one rewritten to hit the real, unmocked `recommend_tier()` no-GPU path; two others simplified by dropping a `recommend_tier` mock that was working around this exact gap; the n8n compose-rendering test rewritten to assert the absence of both dead env-var families instead of the (now-removed) bcrypt-hash presence) + 22/24 bats (same 2 pre-existing, unrelated failures - entry-point/whiptail routing, untouched by this work).
 
+**Vulcan integration (v0.14) closed its own last gap in the same session**: exercised through the real `anvil` CLI entry point (`--integrate-vulcan`), not just direct engine calls or mocks, against a real light-tier Vulcan stack already generated in the sibling `vulcan/` repo. Found the real stack, correctly flagged the real port 3000 collision (`open-webui` vs. Vulcan's `homepage`), wrote a real `"Creative Suite (Anvil)"` Homepage section, confirmed idempotent on a second real run (still exactly one occurrence), and confirmed `--no-integrate-vulcan` declines cleanly with a real stack present. Vulcan's own groups confirmed untouched throughout.
+
 ## Real open questions for whenever this starts for real
 
 None of these have been researched yet — listed so they're not forgotten, not because they're answered — **except VRAM detection, below, which is now implemented and verified (see "v0.1: first real build" above).**
