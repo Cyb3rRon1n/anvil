@@ -104,6 +104,27 @@ def test_write_stack_heavy_nvidia_with_comfyui_requested_includes_it(tmp_path):
     assert any("NVIDIA Container Toolkit" in warning for warning in result["warnings"])
 
 
+def test_write_stack_precreates_nested_comfyui_bind_mounts(tmp_path):
+    """
+    Real bug, found live on msi-laptop (RTX 2080): only the shallow
+    data/comfyui/ directory was pre-created, leaving the two levels-deep
+    ./data/comfyui/run and ./data/comfyui/basedir the NVIDIA compose block
+    actually bind-mounts nonexistent. Docker auto-created them itself at
+    container start, as root - the image's non-root entrypoint then
+    refused to run against a directory it doesn't own.
+    """
+
+    config = make_config(
+        "heavy",
+        gpu=GpuInfo(vendor="nvidia", name="RTX 2080", vram_total_mb=8192),
+        enabled_optional={"comfyui"}
+    )
+    write_stack(config, output_dir=tmp_path / "stack")
+
+    assert (tmp_path / "stack" / "data" / "comfyui" / "run").is_dir()
+    assert (tmp_path / "stack" / "data" / "comfyui" / "basedir").is_dir()
+
+
 def test_write_stack_heavy_amd_with_comfyui_requested_renders_rocm_image(tmp_path):
 
     with patch("installer.generate.detect_render_group_gid", return_value=44):

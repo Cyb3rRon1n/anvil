@@ -13,6 +13,7 @@ from datetime import datetime
 from datetime import timezone as dt_timezone
 from pathlib import Path
 
+import yaml
 from jinja2 import Environment, FileSystemLoader
 
 from installer.detect import GpuInfo, detect_host_ip, detect_render_group_gid, port_in_use
@@ -268,6 +269,38 @@ def render_dashboard(config: GenerationConfig) -> str:
     )
 
 
+def _precreate_bind_mounts(compose_path: Path, output_dir: Path) -> None:
+    """
+    Pre-create every real bind-mount host path from the rendered compose
+    file, not just the top-level data/<service>/ directory the caller
+    already makes. Found live on msi-laptop (real RTX 2080): ComfyUI's
+    NVIDIA block bind-mounts ./data/comfyui/run and ./data/comfyui/basedir
+    two levels deep - the shallow data/<key> mkdir left both nonexistent,
+    so Docker auto-created them itself at container start, as root, and
+    the image's own non-root entrypoint (WANTED_UID=1000) refused to run
+    against a directory it doesn't own. Reading the real rendered file
+    (same technique as vulcan_integration.py's parse_compose_ports())
+    instead of hardcoding which services need which subdirectories, since
+    that list is exactly whatever the template actually mounts.
+
+    Skips any path that already exists - not every bind mount is a
+    directory (LiteLLM's ./config/litellm/config.yaml and SearXNG's
+    ./data/searxng/settings.yml are real files write_stack() already
+    writes earlier in this same call; mkdir()-ing over one of those
+    raises FileExistsError, caught live by this file's own test suite).
+    """
+
+    parsed = yaml.safe_load(compose_path.read_text()) or {}
+
+    for service in (parsed.get("services") or {}).values():
+        for entry in service.get("volumes", []) or []:
+            host_path = str(entry).split(":")[0]
+            if host_path.startswith("./"):
+                target = output_dir / host_path.removeprefix("./")
+                if not target.exists():
+                    target.mkdir(parents=True, exist_ok=True)
+
+
 def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     output_dir = Path(output_dir)
@@ -318,6 +351,7 @@ def write_stack(config: GenerationConfig, output_dir: Path = STACK_DIR) -> dict:
 
     for key in enabled:
         (output_dir / "data" / key).mkdir(parents=True, exist_ok=True)
+    _precreate_bind_mounts(compose_path, output_dir)
 
     dashboard_dir = output_dir / "dashboard"
     dashboard_dir.mkdir(parents=True, exist_ok=True)
