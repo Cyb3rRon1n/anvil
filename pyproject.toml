@@ -45,7 +45,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "pytest-asyncio"]
+dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff"]
 
 [project.scripts]
 anvil = "installer.cli:app"
@@ -55,3 +55,12 @@ packages = ["installer"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff.lint]
+# Pyflakes only (F) - real correctness signal (unused imports, unused
+# locals, undefined names, etc.), not a style/formatter check. Same
+# convention as Vulcan's identical config block - a default ruff rule
+# set would fight this codebase's deliberate style (heavy vertical
+# spacing, see CLAUDE.md); F-only was confirmed clean of false
+# positives against the existing codebase before adding this.
+select = ["F"]

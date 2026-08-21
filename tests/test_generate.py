@@ -783,7 +783,7 @@ def test_write_stack_vane_with_searxng_already_requested_doesnt_duplicate_warnin
 def test_write_stack_localai_renders_no_manual_wiring_warning(tmp_path):
 
     config = make_config("light", enabled_optional={"localai"})
-    result = write_stack(config, output_dir=tmp_path / "stack")
+    write_stack(config, output_dir=tmp_path / "stack")
 
     compose = (tmp_path / "stack" / "docker-compose.yml").read_text()
     assert "localai:" in compose

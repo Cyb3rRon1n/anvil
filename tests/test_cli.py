@@ -1014,6 +1014,7 @@ def test_interactive_start_port_conflict_give_up_exits_1(tmp_path):
 
     assert result.exit_code == 1
     assert "can't be remapped automatically" in result.output
+    mock_run_docker.assert_not_called()
 
 
 def test_uninstall_no_stack_found_exits_1(tmp_path):

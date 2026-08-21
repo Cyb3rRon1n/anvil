@@ -1,10 +1,7 @@
 import socket
 from unittest.mock import patch
 
-import pytest
-
 from installer.preflight import (
-    _find_container_on_port,
     _port_in_use,
     check_ports_available,
     format_port_conflicts,
