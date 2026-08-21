@@ -35,6 +35,13 @@ BACKTITLE="Anvil - GPU-Compute Creativity Forge"
 # profiles. Same real bug found and fixed in Vulcan's identical theme
 # block - every interactive element gets its own visible box at rest
 # and a yellow highlight when focused.
+#
+# `label` (newt's own class for a dialog's body text - the msgbox/
+# yesno/inputbox prompt, not a widget) was left at its unrelated
+# white,black default instead of matching `window`'s black,blue - every
+# dialog's message text sat in its own mismatched black rectangle
+# instead of the surrounding blue window ("text is black highlighted").
+# Same real bug and fix as Vulcan's identical theme block.
 export NEWT_COLORS='
 root=white,black
 border=blue,black
@@ -46,7 +53,7 @@ actbutton=black,yellow
 checkbox=blue,black
 actcheckbox=black,yellow
 entry=black,blue
-label=white,black
+label=black,blue
 listbox=blue,black
 actlistbox=black,yellow
 sellistbox=blue,black
@@ -95,7 +102,7 @@ check_exitstatus() {
     case $1 in
         1)   return 130 ;;   # user pressed Cancel / Escape
         255) whiptail --backtitle "$BACKTITLE" --title "Error" \
-                 --msgbox "Whiptail error, exiting." 8 60
+                 --msgbox "Whiptail error, exiting." 8 72
              exit 1 ;;
     esac
 }
@@ -138,7 +145,7 @@ confirm_and_run() {
     [ -n "$TESTING" ] && return 0
 
     if ! whiptail --backtitle "$BACKTITLE" --title "$title" \
-        --yesno "$confirm_text" 14 76; then
+        --yesno "$confirm_text" 14 92; then
         return 130
     fi
 
@@ -172,7 +179,7 @@ main_menu() {
     while true; do
 
         CHOICE=$(whiptail --backtitle "$BACKTITLE" --title "Anvil" \
-            --menu "Choose an action:" 22 76 9 \
+            --menu "Choose an action:" 22 92 9 \
             "guided-setup"    "1. Guided Setup - detect GPU, pick tier, generate stack" \
             "start-stack"     "2. Start Stack - docker compose up -d" \
             "stop-stack"      "3. Stop Stack - docker compose down" \
@@ -240,7 +247,7 @@ guided_setup() {
     # --- Welcome screen (Security Onion pattern) ---
     if [ -z "$TESTING" ]; then
         if ! whiptail --backtitle "$BACKTITLE" --title "Welcome" --yesno \
-            "Welcome to the Anvil Setup!\n\nAnvil will detect your GPU and recommend the best\nconfiguration for a local AI/creative stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" 20 76; then
+            "Welcome to the Anvil Setup!\n\nAnvil will detect your GPU and recommend the best\nconfiguration for a local AI/creative stack.\n\nSetup uses keyboard navigation:\n  Arrow keys to move around\n  Enter to select\n  Tab to switch between buttons\n\nWould you like to continue?" 20 92; then
             return 0
         fi
     fi
@@ -258,7 +265,7 @@ guided_setup() {
         log_info "Docker not fully ready, showing warning"
         if [ -z "$TESTING" ]; then
             whiptail --backtitle "$BACKTITLE" --title "Docker" --msgbox \
-                "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Anvil try to install/start it for you (--yes is implied)." 12 76
+                "Docker isn't fully ready yet (installed=$DOCKER_INSTALLED running=$DOCKER_RUNNING compose-v2=$DOCKER_COMPOSE_V2). Continuing will let Anvil try to install/start it for you (--yes is implied)." 12 92
         fi
     fi
 
@@ -304,7 +311,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         TIER=$(whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] Choose a Tier" \
             --radiolist "Detected: $gpu_desc, ${vram_gb}GB VRAM.\n$RECOMMENDED_TIER_EXPLANATION" \
-            18 76 3 \
+            18 92 3 \
             "light"  "Light - small quantized models only" "$light_on" \
             "medium" "Medium - comfortable 7-9B models" "$medium_on" \
             "heavy"  "Heavy - comfortable 14B + image generation" "$heavy_on" \
@@ -335,7 +342,7 @@ guided_setup() {
             if [ -z "$TESTING" ]; then
                 if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] ComfyUI" \
                     --checklist "Enable ComfyUI (image generation)? Model checkpoints must be placed manually after first start." \
-                    12 76 1 \
+                    12 92 1 \
                     "comfyui" "ComfyUI - node-based image generation" "$comfyui_default" \
                     3>&1 1>&2 2>&3 | grep -q "comfyui"; then
                     COMFYUI_FLAG="--comfyui"
@@ -362,7 +369,7 @@ guided_setup() {
             if [ -z "$TESTING" ]; then
                 if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] InvokeAI" \
                     --checklist "Enable InvokeAI (turnkey image generation)? Models download straight from InvokeAI's built-in Model Manager." \
-                    12 76 1 \
+                    12 92 1 \
                     "invokeai" "InvokeAI - turnkey image generation" "$invokeai_default" \
                     3>&1 1>&2 2>&3 | grep -q "invokeai"; then
                     INVOKEAI_FLAG="--invokeai"
@@ -386,7 +393,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] RAG" \
             --checklist "Enable RAG (Qdrant + a text-embeddings service)? Lets Open WebUI retrieve answers from documents you upload - needs a one-time admin-panel setting after first start." \
-            12 76 1 \
+            12 92 1 \
             "rag" "Qdrant + embeddings - document retrieval for Open WebUI" "$rag_default" \
             3>&1 1>&2 2>&3 | grep -q "rag"; then
             RAG_FLAG="--rag"
@@ -404,7 +411,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] Voice" \
             --checklist "Enable voice (Whisper speech-to-text + Kokoro text-to-speech)? Needs a one-time admin-panel setting in Open WebUI after first start." \
-            12 76 1 \
+            12 92 1 \
             "voice" "Whisper + Kokoro - voice input/output for Open WebUI" "$voice_default" \
             3>&1 1>&2 2>&3 | grep -q "voice"; then
             VOICE_FLAG="--voice"
@@ -422,7 +429,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] n8n" \
             --checklist "Enable n8n (workflow automation)? A random admin password is generated once and printed after first start." \
-            12 76 1 \
+            12 92 1 \
             "n8n" "n8n - visual workflow automation" "$n8n_default" \
             3>&1 1>&2 2>&3 | grep -q "n8n"; then
             N8N_FLAG="--n8n"
@@ -442,7 +449,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] LiteLLM" \
             --checklist "Enable LiteLLM (universal LLM proxy for local + cloud providers)? Ships a starter config with one working Ollama model." \
-            12 76 1 \
+            12 92 1 \
             "litellm" "LiteLLM - one endpoint for local + cloud LLM providers" "$litellm_default" \
             3>&1 1>&2 2>&3 | grep -q "litellm"; then
             LITELLM_FLAG="--litellm"
@@ -460,7 +467,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] SearXNG" \
             --checklist "Enable SearXNG (self-hosted metasearch engine)?" \
-            12 76 1 \
+            12 92 1 \
             "searxng" "SearXNG - private metasearch" "$searxng_default" \
             3>&1 1>&2 2>&3 | grep -q "searxng"; then
             SEARXNG_FLAG="--searxng"
@@ -478,7 +485,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] Vane" \
             --checklist "Enable Vane, formerly Perplexica (AI-powered search)? Needs SearXNG - enabled automatically alongside it if not also checked." \
-            12 76 1 \
+            12 92 1 \
             "vane" "Vane - AI search with cited sources" "$vane_default" \
             3>&1 1>&2 2>&3 | grep -q "vane"; then
             VANE_FLAG="--vane"
@@ -499,7 +506,7 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] LocalAI" \
             --checklist "Enable LocalAI (OpenAI-compatible multi-modal inference server)?" \
-            12 76 1 \
+            12 92 1 \
             "localai" "LocalAI - broader model format support than Ollama" "$localai_default" \
             3>&1 1>&2 2>&3 | grep -q "localai"; then
             LOCALAI_FLAG="--localai"
@@ -520,7 +527,7 @@ guided_setup() {
         if [ -z "$TESTING" ]; then
             if whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] Vulcan Integration" \
                 --yesno "Found a Vulcan stack at ${VULCAN_STACK_PATH:-} - cross-check ports and add a Homepage section for Anvil's enabled services?" \
-                10 76; then
+                10 92; then
                 INTEGRATE_VULCAN_FLAG="--integrate-vulcan"
             fi
         else
@@ -539,12 +546,12 @@ guided_setup() {
     if [ -z "$TESTING" ]; then
         step=$((step + 1))
         PUID=$(whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] User/Group" \
-            --inputbox "PUID - user ID the containers run as" 10 70 "$default_puid_value" \
+            --inputbox "PUID - user ID the containers run as" 10 84 "$default_puid_value" \
             3>&1 1>&2 2>&3) || return
 
         step=$((step + 1))
         PGID=$(whiptail --backtitle "$BACKTITLE" --title "[Step $step/$total_steps] User/Group" \
-            --inputbox "PGID - group ID the containers run as" 10 70 "$default_pgid_value" \
+            --inputbox "PGID - group ID the containers run as" 10 84 "$default_pgid_value" \
             3>&1 1>&2 2>&3) || return
     else
         PUID="$default_puid_value"
@@ -554,7 +561,7 @@ guided_setup() {
     local START_FLAG="--no-start"
     if [ -z "$TESTING" ]; then
         if whiptail --backtitle "$BACKTITLE" --title "Start Now" \
-            --yesno "Start the stack now, right after generating it?" 10 70; then
+            --yesno "Start the stack now, right after generating it?" 10 84; then
             START_FLAG="--start"
         fi
     else
@@ -599,7 +606,7 @@ guided_setup() {
         summary+="\nPress TAB to select yes or no."
 
         if ! whiptail --backtitle "$BACKTITLE" --title "Review Settings" \
-            --yesno "$summary" 20 76 --scrolltext; then
+            --yesno "$summary" 20 92 --scrolltext; then
             return 0
         fi
     fi
@@ -628,17 +635,17 @@ guided_setup() {
                 complete_msg+="\n\nTo manage your stack:\n  Stop:   docker compose -f stack/docker-compose.yml down\n  Status: docker compose -f stack/docker-compose.yml ps"
 
                 whiptail --backtitle "$BACKTITLE" --title "Setup Complete" \
-                    --msgbox "$complete_msg" 22 76 --scrolltext
+                    --msgbox "$complete_msg" 22 92 --scrolltext
             else
                 whiptail --backtitle "$BACKTITLE" --title "Setup Complete" --msgbox \
-                    "Anvil setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 76
+                    "Anvil setup is complete!\n\nStack written to stack/docker-compose.yml (not started yet).\n\nStart it when ready:\n  docker compose -f stack/docker-compose.yml up -d" 14 92
             fi
         fi
     else
         log_error "Guided setup failed (exit $rc)"
         if [ -z "$TESTING" ]; then
             whiptail --backtitle "$BACKTITLE" --title "Setup Failed" --msgbox \
-                "Setup had a problem (exit $rc).\n\nCheck the log for details:\n$SETUP_LOG" 12 76
+                "Setup had a problem (exit $rc).\n\nCheck the log for details:\n$SETUP_LOG" 12 92
         fi
     fi
 }
@@ -651,7 +658,7 @@ start_stack() {
 
     if [ ! -f "$compose_file" ]; then
         whiptail --backtitle "$BACKTITLE" --title "Start Stack" --msgbox \
-            "No stack found at $compose_file. Run Guided Setup first." 10 70
+            "No stack found at $compose_file. Run Guided Setup first." 10 84
         return 0
     fi
 
@@ -668,7 +675,7 @@ view_status() {
 
     if [ ! -f "$compose_file" ]; then
         whiptail --backtitle "$BACKTITLE" --title "View Status" --msgbox \
-            "No stack found at $compose_file. Run Guided Setup first." 10 70
+            "No stack found at $compose_file. Run Guided Setup first." 10 84
         return 0
     fi
 
@@ -703,7 +710,7 @@ view_status() {
     fi
 
     whiptail --backtitle "$BACKTITLE" --title "View Status" \
-        --msgbox "$status_text" 16 70
+        --msgbox "$status_text" 16 84
 }
 
 # --- Uninstall ---------------------------------------------------------
@@ -713,7 +720,7 @@ uninstall_flow() {
     local purge_flags=()
 
     if whiptail --backtitle "$BACKTITLE" --title "Uninstall Stack" \
-        --yesno "Also delete stack/data/ - real downloaded models, tens to hundreds of GB? (default: No - keep them)" 10 70 --defaultno; then
+        --yesno "Also delete stack/data/ - real downloaded models, tens to hundreds of GB? (default: No - keep them)" 10 84 --defaultno; then
         purge_flags=(--purge-data)
     fi
 
@@ -759,7 +766,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     [ -f "$SETUP_LOG" ] && mv "$SETUP_LOG" "$SETUP_LOG.$(date +%Y%m%d%H%M%S)" 2>/dev/null
 
     # Trap unhandled errors — show the failed screen before exiting.
-    trap 'log_error "Unhandled error on line $LINENO"; whiptail --backtitle "$BACKTITLE" --title "Error" --msgbox "Unexpected error. Check log:\n$SETUP_LOG" 10 76 2>/dev/null; exit 1' ERR
+    trap 'log_error "Unhandled error on line $LINENO"; whiptail --backtitle "$BACKTITLE" --title "Error" --msgbox "Unexpected error. Check log:\n$SETUP_LOG" 10 92 2>/dev/null; exit 1' ERR
 
     # First run (no stack yet) skips the Main Menu entirely and drops
     # straight into Guided Setup, matching Security Onion's so-setup -
