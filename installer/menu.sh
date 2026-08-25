@@ -81,7 +81,7 @@ fi
 _dlg_rows() {
     local total
     total=$(tput lines 2>/dev/null || echo 24)
-    local rows=$(( total * 50 / 100 ))
+    local rows=$(( total * 60 / 100 ))
     [ "$rows" -lt 10 ] && rows=10
     echo "$rows"
 }
@@ -89,7 +89,7 @@ _dlg_rows() {
 _dlg_cols() {
     local total
     total=$(tput cols 2>/dev/null || echo 80)
-    local cols=$(( total * 50 / 100 ))
+    local cols=$(( total * 60 / 100 ))
     [ "$cols" -lt 60 ] && cols=60
     echo "$cols"
 }
@@ -97,7 +97,7 @@ _dlg_cols() {
 _dlg_menu_items() {
     local total
     total=$(tput lines 2>/dev/null || echo 24)
-    local items=$(( total * 40 / 100 ))
+    local items=$(( total * 45 / 100 ))
     [ "$items" -lt 5 ] && items=5
     echo "$items"
 }
