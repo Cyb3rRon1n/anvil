@@ -5,6 +5,11 @@
 # Generated stack output, once this exists - never committed here.
 stack/
 
+# Secrets - env files with real API keys / passwords, never committed.
+.env
+.env.*
+!.env.example
+
 # Local-only reference clone of another project (ODS) for research - not our code, not committed.
 .reference-ODS/
 
